@@ -1,0 +1,141 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// 管理者テーブル（JWT認証主体）
+model Admin {
+  id        String   @id @default(uuid())
+  loginId   String   @unique @map("login_id")
+  password  String
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("admins")
+}
+
+/// 拠点テーブル
+model Site {
+  siteId      String   @id @default(dbgenerated("concat('LOC-', lpad(cast(nextval('site_id_seq') as text), 4, '0'))")) @map("site_id")
+  siteName    String   @map("site_name")
+  address     String?
+  phoneNumber String?  @map("phone_number")
+  note        String?
+  status      String   @default("active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  units                 Unit[]
+  contentSiteAssignments ContentSiteAssignment[]
+
+  @@map("sites")
+}
+
+/// 筐体テーブル
+model Unit {
+  unitId        String   @id @default(dbgenerated("concat('UNIT-', upper(substring(gen_random_uuid()::text, 1, 8)))")) @map("unit_id")
+  siteId        String?  @map("site_id")
+  unitName      String   @map("unit_name")
+  pcUuid        String?  @map("pc_uuid")
+  deviceToken   String?  @unique @map("device_token")
+  connectionMode String  @default("online") @map("connection_mode")
+  status        String   @default("normal")
+  alertMessage  String?  @map("alert_message")
+  licenseStatus String   @default("unknown") @map("license_status")
+  licenseExpiredAt DateTime? @map("license_expired_at")
+  lastSeenAt    DateTime? @map("last_seen_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  site          Site?    @relation(fields: [siteId], references: [siteId])
+  deviceLogs    DeviceLog[]
+  deviceAlerts  DeviceAlert[]
+  dailyAnalytics DailyAnalytics[]
+
+  @@map("units")
+}
+
+/// コンテンツテーブル
+model Content {
+  contentId      String   @id @default(dbgenerated("concat('CNT-', lpad(cast(nextval('content_id_seq') as text), 5, '0'))")) @map("content_id")
+  contentName    String   @map("content_name")
+  language       String   @default("ja")
+  deliveryType   String   @default("general") @map("delivery_type")
+  statusCategory String   @default("status1") @map("status_category")
+  filePath       String?  @map("file_path")
+  fileSize       BigInt?  @map("file_size")
+  checksum       String?
+  version        Int      @default(1)
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  contentSiteAssignments ContentSiteAssignment[]
+
+  @@map("contents")
+}
+
+/// 配信対象テーブル（コンテンツと拠点の多対多）
+model ContentSiteAssignment {
+  contentId String  @map("content_id")
+  siteId    String  @map("site_id")
+
+  content   Content @relation(fields: [contentId], references: [contentId])
+  site      Site    @relation(fields: [siteId], references: [siteId])
+
+  @@id([contentId, siteId])
+  @@map("content_site_assignments")
+}
+
+/// デバイスログテーブル
+model DeviceLog {
+  logId      String   @id @default(uuid()) @map("log_id")
+  unitId     String   @map("unit_id")
+  logType    String   @map("log_type")
+  level      String
+  message    String
+  occurredAt DateTime @map("occurred_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  unit       Unit     @relation(fields: [unitId], references: [unitId])
+
+  @@index([unitId, occurredAt])
+  @@map("device_logs")
+}
+
+/// アラートテーブル
+model DeviceAlert {
+  id         String   @id @default(uuid())
+  unitId     String   @map("unit_id")
+  alertType  String   @map("alert_type")
+  deviceName String?  @map("device_name")
+  detail     String?
+  level      String
+  occurredAt DateTime @map("occurred_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  unit       Unit     @relation(fields: [unitId], references: [unitId])
+
+  @@index([unitId, occurredAt])
+  @@map("device_alerts")
+}
+
+/// 日次利用統計テーブル
+model DailyAnalytics {
+  id         String   @id @default(uuid())
+  unitId     String   @map("unit_id")
+  targetDate DateTime @map("target_date") @db.Date
+  useCount   Int      @map("use_count")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  unit       Unit     @relation(fields: [unitId], references: [unitId])
+
+  @@unique([unitId, targetDate])
+  @@map("daily_analytics")
+}
