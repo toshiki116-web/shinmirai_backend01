@@ -1,0 +1,9 @@
+node_modules
+.next
+dist
+.git
+*.md
+!README.md
+.env*
+apps/*/node_modules
+packages/*/node_modules
