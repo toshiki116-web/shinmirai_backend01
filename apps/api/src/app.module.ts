@@ -11,6 +11,7 @@ import { UnitsModule } from './admin/units/units.module';
 import { ContentsModule } from './admin/contents/contents.module';
 import { UsersModule } from './admin/users/users.module';
 import { DeviceModule } from './device/device.module';
+import { StorageModule } from './storage/storage.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { DeviceModule } from './device/device.module';
     ContentsModule,
     UsersModule,
     DeviceModule,
+    StorageModule,
   ],
   providers: [
     // JWT認証をグローバルに適用（@Public()で除外可能）

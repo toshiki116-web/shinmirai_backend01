@@ -91,6 +91,8 @@ model Content {
   filePath       String?  @map("file_path")
   fileSize       BigInt?  @map("file_size")
   checksum       String?
+  mimeType       String?  @map("mime_type")
+  uploadStatus   String   @default("none") @map("upload_status")
   version        Int      @default(1)
   isActive       Boolean  @default(true) @map("is_active")
   createdAt      DateTime @default(now()) @map("created_at")

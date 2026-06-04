@@ -41,10 +41,25 @@ export const LicenseStatus = {
   VALID: 'valid',
   /** 期限切れ */
   EXPIRED: 'expired',
+  /** 停止 */
+  SUSPENDED: 'suspended',
   /** 未確認 */
   UNKNOWN: 'unknown',
 } as const;
 export type LicenseStatus = (typeof LicenseStatus)[keyof typeof LicenseStatus];
+
+/** コンテンツのアップロード状態 */
+export const ContentUploadStatus = {
+  /** 未アップロード */
+  NONE: 'none',
+  /** アップロード中 */
+  UPLOADING: 'uploading',
+  /** 配信可能 */
+  READY: 'ready',
+  /** アップロード失敗 */
+  FAILED: 'failed',
+} as const;
+export type ContentUploadStatus = (typeof ContentUploadStatus)[keyof typeof ContentUploadStatus];
 
 /** コンテンツの配信区分 */
 export const DeliveryType = {

@@ -231,6 +231,8 @@ export const api = {
     request<any>("/admin/units", { method: "POST", body: JSON.stringify(data) }),
   updateUnit: (unitId: string, data: Partial<{ siteId: string; unitName: string; connectionMode: string }>) =>
     request<any>(`/admin/units/${unitId}`, { method: "PATCH", body: JSON.stringify(data) }),
+  updateUnitLicense: (unitId: string, data: { licenseStatus: string; licenseExpiredAt?: string | null }) =>
+    request<any>(`/admin/units/${unitId}/license`, { method: "PATCH", body: JSON.stringify(data) }),
   deleteUnit: (unitId: string) =>
     request<any>(`/admin/units/${unitId}`, { method: "DELETE" }),
 
@@ -249,6 +251,13 @@ export const api = {
     request<any>("/admin/contents", { method: "POST", body: JSON.stringify(data) }),
   updateContent: (contentId: string, data: Partial<{ contentName: string; language: string; deliveryType: string; statusCategory: string; siteIds: string[] }>) =>
     request<any>(`/admin/contents/${contentId}`, { method: "PATCH", body: JSON.stringify(data) }),
+  createContentUploadUrl: (contentId: string, data: { fileName: string; contentType: string; fileSize: number }) =>
+    request<{ uploadUrl: string; objectKey: string; expiresIn: number }>(
+      `/admin/contents/${contentId}/upload-url`,
+      { method: "POST", body: JSON.stringify(data) },
+    ),
+  completeContentUpload: (contentId: string, data: { objectKey: string; checksum?: string }) =>
+    request<any>(`/admin/contents/${contentId}/upload-complete`, { method: "POST", body: JSON.stringify(data) }),
   deleteContent: (contentId: string) =>
     request<any>(`/admin/contents/${contentId}`, { method: "DELETE" }),
   assignSites: (contentId: string, siteIds: string[]) =>

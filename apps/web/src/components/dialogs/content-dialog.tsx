@@ -14,12 +14,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { api, ApiClientError } from "@/lib/api-client"
-import type { Content } from "@/lib/mock-data"
+import type { Content, Site } from "@/lib/mock-data"
+
+type ContentWithAssignedSites = Content & {
+  assignedSites?: { siteId: string; siteName: string }[]
+}
 
 type Props = {
   open: boolean
   onOpenChange: (open: boolean) => void
-  content?: Content | null
+  content?: ContentWithAssignedSites | null
   onSuccess: () => void
 }
 
@@ -27,11 +31,13 @@ export function ContentDialog({ open, onOpenChange, content, onSuccess }: Props)
   const isEdit = !!content
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
+  const [sites, setSites] = useState<Site[]>([])
 
   const [contentName, setContentName] = useState("")
   const [language, setLanguage] = useState("ja")
   const [deliveryType, setDeliveryType] = useState("general")
   const [statusCategory, setStatusCategory] = useState("status1")
+  const [selectedSiteIds, setSelectedSiteIds] = useState<string[]>([])
 
   useEffect(() => {
     if (open) {
@@ -39,17 +45,34 @@ export function ContentDialog({ open, onOpenChange, content, onSuccess }: Props)
       setLanguage(content?.language ?? "ja")
       setDeliveryType(content?.deliveryType ?? "general")
       setStatusCategory(content?.statusCategory ?? "status1")
+      setSelectedSiteIds(content?.assignedSites?.map((site) => site.siteId) ?? [])
       setError("")
+      void api.getSites({ limit: 100 })
+        .then((data) => setSites(data.items))
+        .catch((err) => {
+          setSites([])
+          setError(err instanceof ApiClientError ? err.message : "拠点一覧の取得に失敗しました")
+        })
     }
   }, [open, content])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError("")
+    if (deliveryType === "limited" && selectedSiteIds.length === 0) {
+      setError("限定配信では配信先拠点を1件以上選択してください")
+      return
+    }
     setIsLoading(true)
 
     try {
-      const data = { contentName, language, deliveryType, statusCategory }
+      const data = {
+        contentName,
+        language,
+        deliveryType,
+        statusCategory,
+        siteIds: deliveryType === "limited" ? selectedSiteIds : [],
+      }
       if (isEdit) {
         await api.updateContent(content!.contentId, data)
       } else {
@@ -62,6 +85,14 @@ export function ContentDialog({ open, onOpenChange, content, onSuccess }: Props)
     } finally {
       setIsLoading(false)
     }
+  }
+
+  function toggleSite(siteId: string) {
+    setSelectedSiteIds((current) =>
+      current.includes(siteId)
+        ? current.filter((id) => id !== siteId)
+        : [...current, siteId],
+    )
   }
 
   return (
@@ -127,6 +158,29 @@ export function ContentDialog({ open, onOpenChange, content, onSuccess }: Props)
               ))}
             </div>
           </div>
+          {deliveryType === "limited" && (
+            <div className="space-y-2">
+              <Label>配信先拠点 *</Label>
+              <div className="max-h-40 space-y-2 overflow-y-auto rounded-md border border-input p-3">
+                {sites.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">拠点がありません</p>
+                ) : (
+                  sites.map((site) => (
+                    <label key={site.siteId} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={selectedSiteIds.includes(site.siteId)}
+                        onChange={() => toggleSite(site.siteId)}
+                        className="h-4 w-4"
+                      />
+                      <span>{site.siteName}</span>
+                      <span className="font-mono text-xs text-muted-foreground">{site.siteId}</span>
+                    </label>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
           <div className="space-y-2">
             <Label>状態カテゴリ</Label>
             <div className="flex gap-2">

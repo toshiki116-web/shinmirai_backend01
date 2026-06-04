@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { UnitsService } from './units.service';
 import { CreateUnitDto } from './dto/create-unit.dto';
 import { UpdateUnitDto } from './dto/update-unit.dto';
+import { UpdateLicenseDto } from './dto/update-license.dto';
 import { UnitQueryDto } from './dto/unit-query.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 
@@ -42,6 +43,15 @@ export class UnitsController {
   @ApiResponse({ status: 404, description: '筐体が見つからない' })
   update(@Param('unitId') unitId: string, @Body() dto: UpdateUnitDto) {
     return this.unitsService.update(unitId, dto);
+  }
+
+  @Patch(':unitId/license')
+  @Roles('master', 'editor')
+  @ApiOperation({ summary: '筐体ライセンス設定' })
+  @ApiResponse({ status: 200, description: 'ライセンス更新成功' })
+  @ApiResponse({ status: 404, description: '筐体が見つからない' })
+  updateLicense(@Param('unitId') unitId: string, @Body() dto: UpdateLicenseDto) {
+    return this.unitsService.updateLicense(unitId, dto);
   }
 
   @Delete(':unitId')

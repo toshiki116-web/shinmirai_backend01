@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { ArrowLeft, Pencil, Trash2, Wifi, WifiOff, Shield, Clock } from "lucide-react"
 import { statusLabels, formatDate, formatDateTime, type Unit } from "@/lib/mock-data"
 import { UnitDialog } from "@/components/dialogs/unit-dialog"
@@ -33,6 +34,10 @@ export default function UnitDetailPage() {
   const [error, setError] = useState("")
   const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [licenseStatus, setLicenseStatus] = useState("unknown")
+  const [licenseExpiredAt, setLicenseExpiredAt] = useState("")
+  const [licenseError, setLicenseError] = useState("")
+  const [isLicenseSaving, setIsLicenseSaving] = useState(false)
   const { admin } = useAuth()
   const canEdit = admin?.role === "master" || admin?.role === "editor"
 
@@ -42,6 +47,8 @@ export default function UnitDetailPage() {
     try {
       const data = await api.getUnit(unitId)
       setUnit(data)
+      setLicenseStatus(data.licenseStatus ?? "unknown")
+      setLicenseExpiredAt(data.licenseExpiredAt ? data.licenseExpiredAt.slice(0, 10) : "")
     } catch (err) {
       setUnit(null)
       setError(err instanceof ApiClientError ? err.message : "筐体詳細の取得に失敗しました")
@@ -53,6 +60,22 @@ export default function UnitDetailPage() {
   useEffect(() => {
     void fetchUnit()
   }, [fetchUnit])
+
+  async function handleLicenseSave() {
+    setLicenseError("")
+    setIsLicenseSaving(true)
+    try {
+      await api.updateUnitLicense(unitId, {
+        licenseStatus,
+        licenseExpiredAt: licenseExpiredAt ? `${licenseExpiredAt}T00:00:00.000Z` : null,
+      })
+      await fetchUnit()
+    } catch (err) {
+      setLicenseError(err instanceof ApiClientError ? err.message : "ライセンス更新に失敗しました")
+    } finally {
+      setIsLicenseSaving(false)
+    }
+  }
 
   if (isLoading && !unit) {
     return <p className="py-20 text-center text-sm text-muted-foreground">読み込み中...</p>
@@ -161,6 +184,29 @@ export default function UnitDetailPage() {
                   {unit.licenseExpiredAt ? formatDate(unit.licenseExpiredAt) : "-"}
                 </span>
               </div>
+              {canEdit && (
+                <div className="space-y-2 border-t pt-3">
+                  <select
+                    value={licenseStatus}
+                    onChange={(e) => setLicenseStatus(e.target.value)}
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  >
+                    <option value="valid">有効</option>
+                    <option value="expired">期限切れ</option>
+                    <option value="suspended">停止</option>
+                    <option value="unknown">未確認</option>
+                  </select>
+                  <Input
+                    type="date"
+                    value={licenseExpiredAt}
+                    onChange={(e) => setLicenseExpiredAt(e.target.value)}
+                  />
+                  {licenseError && <p className="text-xs text-destructive">{licenseError}</p>}
+                  <Button size="sm" onClick={() => { void handleLicenseSave() }} disabled={isLicenseSaving}>
+                    {isLicenseSaving ? "保存中..." : "ライセンスを保存"}
+                  </Button>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

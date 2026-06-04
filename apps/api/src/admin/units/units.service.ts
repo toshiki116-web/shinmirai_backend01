@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateUnitDto } from './dto/create-unit.dto';
 import { UpdateUnitDto } from './dto/update-unit.dto';
+import { UpdateLicenseDto } from './dto/update-license.dto';
 import { UnitQueryDto } from './dto/unit-query.dto';
 import { Prisma } from '@prisma/client';
 
@@ -109,6 +110,18 @@ export class UnitsService {
         siteId: dto.siteId,
         unitName: dto.unitName,
         connectionMode: dto.connectionMode,
+      },
+    });
+  }
+
+  async updateLicense(unitId: string, dto: UpdateLicenseDto) {
+    await this.ensureExists(unitId);
+
+    return this.prisma.unit.update({
+      where: { unitId },
+      data: {
+        licenseStatus: dto.licenseStatus,
+        licenseExpiredAt: dto.licenseExpiredAt ? new Date(dto.licenseExpiredAt) : null,
       },
     });
   }

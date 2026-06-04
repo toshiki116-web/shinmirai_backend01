@@ -5,6 +5,8 @@ import { CreateContentDto } from './dto/create-content.dto';
 import { UpdateContentDto } from './dto/update-content.dto';
 import { ContentQueryDto } from './dto/content-query.dto';
 import { AssignSitesDto } from './dto/assign-sites.dto';
+import { CompleteUploadDto } from './dto/complete-upload.dto';
+import { CreateUploadUrlDto } from './dto/create-upload-url.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 
 @ApiTags('コンテンツ管理')
@@ -34,6 +36,25 @@ export class ContentsController {
   @ApiResponse({ status: 201, description: '登録成功' })
   create(@Body() dto: CreateContentDto) {
     return this.contentsService.create(dto);
+  }
+
+  @Post(':contentId/upload-url')
+  @Roles('master', 'editor')
+  @ApiOperation({ summary: '動画アップロードURL発行', description: 'S3直PUT用の署名付きURLを発行する' })
+  @ApiResponse({ status: 201, description: '署名付きURL発行成功' })
+  @ApiResponse({ status: 404, description: 'コンテンツが見つからない' })
+  createUploadUrl(@Param('contentId') contentId: string, @Body() dto: CreateUploadUrlDto) {
+    return this.contentsService.createUploadUrl(contentId, dto);
+  }
+
+  @Post(':contentId/upload-complete')
+  @Roles('master', 'editor')
+  @ApiOperation({ summary: '動画アップロード完了', description: 'S3の実在確認後、コンテンツのファイルメタデータを確定する' })
+  @ApiResponse({ status: 201, description: 'アップロード完了処理成功' })
+  @ApiResponse({ status: 400, description: 'アップロード済みファイルを確認できない' })
+  @ApiResponse({ status: 404, description: 'コンテンツが見つからない' })
+  completeUpload(@Param('contentId') contentId: string, @Body() dto: CompleteUploadDto) {
+    return this.contentsService.completeUpload(contentId, dto);
   }
 
   @Patch(':contentId')

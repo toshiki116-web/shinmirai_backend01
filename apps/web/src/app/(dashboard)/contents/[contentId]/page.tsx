@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { ArrowLeft, Pencil, Trash2, Film, MapPin, HardDrive, Hash } from "lucide-react"
+import { ArrowLeft, Pencil, Trash2, Film, MapPin, HardDrive, Hash, Upload } from "lucide-react"
 import { statusLabels, formatDate, formatFileSize, type Content } from "@/lib/mock-data"
 import { ContentDialog } from "@/components/dialogs/content-dialog"
 import { DeleteDialog } from "@/components/dialogs/delete-dialog"
@@ -30,6 +30,8 @@ export default function ContentDetailPage() {
   const [error, setError] = useState("")
   const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null)
+  const [uploadError, setUploadError] = useState("")
   const { admin } = useAuth()
   const canEdit = admin?.role === "master" || admin?.role === "editor"
 
@@ -50,6 +52,49 @@ export default function ContentDetailPage() {
   useEffect(() => {
     void fetchContent()
   }, [fetchContent])
+
+  async function uploadToSignedUrl(uploadUrl: string, file: File) {
+    return new Promise<string | undefined>((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open("PUT", uploadUrl)
+      xhr.setRequestHeader("Content-Type", file.type)
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          setUploadProgress(Math.round((event.loaded / event.total) * 100))
+        }
+      }
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(xhr.getResponseHeader("ETag")?.replaceAll('"', ""))
+        } else {
+          reject(new Error(`S3 upload failed: ${xhr.status}`))
+        }
+      }
+      xhr.onerror = () => reject(new Error("S3 upload failed"))
+      xhr.send(file)
+    })
+  }
+
+  async function handleUpload(file: File | undefined) {
+    if (!file) return
+    setUploadError("")
+    setUploadProgress(0)
+    try {
+      const { uploadUrl, objectKey } = await api.createContentUploadUrl(contentId, {
+        fileName: file.name,
+        contentType: file.type,
+        fileSize: file.size,
+      })
+      const checksum = await uploadToSignedUrl(uploadUrl, file)
+      await api.completeContentUpload(contentId, { objectKey, checksum })
+      setUploadProgress(null)
+      await fetchContent()
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "アップロードに失敗しました")
+      setUploadProgress(null)
+      await fetchContent()
+    }
+  }
 
   if (isLoading && !content) {
     return <p className="py-20 text-center text-sm text-muted-foreground">読み込み中...</p>
@@ -134,11 +179,41 @@ export default function ContentDetailPage() {
             <div className="grid grid-cols-[100px_1fr] gap-y-3 text-sm">
               <span className="text-muted-foreground">ファイル</span>
               <span className="font-mono text-xs break-all">{content.filePath ?? "未アップロード"}</span>
+              <span className="text-muted-foreground">状態</span>
+              <Badge variant={statusLabels[content.uploadStatus]?.variant ?? "secondary"} className="w-fit">
+                {statusLabels[content.uploadStatus]?.label ?? content.uploadStatus}
+              </Badge>
+              <span className="text-muted-foreground">MIME</span>
+              <span className="font-mono text-xs">{content.mimeType ?? "-"}</span>
               <span className="text-muted-foreground">サイズ</span>
               <span>{formatFileSize(content.fileSize)}</span>
               <span className="text-muted-foreground">チェックサム</span>
               <span className="font-mono text-xs">{content.checksum ?? "-"}</span>
             </div>
+            {canEdit && (
+              <div className="space-y-2 border-t pt-3">
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors hover:bg-accent">
+                  <Upload className="h-4 w-4" />
+                  動画ファイルをアップロード
+                  <input
+                    type="file"
+                    accept="video/mp4,video/quicktime"
+                    className="hidden"
+                    disabled={uploadProgress !== null}
+                    onChange={(e) => { void handleUpload(e.target.files?.[0]); e.currentTarget.value = "" }}
+                  />
+                </label>
+                {uploadProgress !== null && (
+                  <div className="space-y-1">
+                    <div className="h-2 overflow-hidden rounded-full bg-muted">
+                      <div className="h-full bg-primary" style={{ width: `${uploadProgress}%` }} />
+                    </div>
+                    <p className="text-xs text-muted-foreground">{uploadProgress}%</p>
+                  </div>
+                )}
+                {uploadError && <p className="text-xs text-destructive">{uploadError}</p>}
+              </div>
+            )}
           </CardContent>
         </Card>
 

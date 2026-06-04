@@ -1,5 +1,11 @@
 import { Injectable, ConflictException, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { StorageService } from '../storage/storage.service';
+
+const ContentUploadStatus = {
+  READY: 'ready',
+} as const;
 import { ActivateDto } from './dto/activate.dto';
 import { HeartbeatDto } from './dto/heartbeat.dto';
 import { CreateAlertDto } from './dto/alert.dto';
@@ -24,7 +30,10 @@ type UnitWithSite = {
 export class DeviceService {
   private readonly logger = new Logger(DeviceService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storageService: StorageService,
+  ) {}
 
   /** 拠点・筐体マスタ取得（初期設定用） */
   async getMasterSitesUnits() {
@@ -75,15 +84,23 @@ export class DeviceService {
       return { items: [] };
     }
 
-    const where: Record<string, unknown> = {
-      contentSiteAssignments: {
-        some: { siteId: device.siteId },
-      },
+    const where: Prisma.ContentWhereInput = {
       isActive: true,
+      uploadStatus: ContentUploadStatus.READY,
+      filePath: { not: null },
+      OR: [
+        { deliveryType: 'general' },
+        {
+          deliveryType: 'limited',
+          contentSiteAssignments: {
+            some: { siteId: device.siteId },
+          },
+        },
+      ],
     };
 
     if (language) {
-      where['language'] = language;
+      where.language = language;
     }
 
     const contents = await this.prisma.content.findMany({
@@ -98,14 +115,12 @@ export class DeviceService {
       },
     });
 
-    // TODO(2026-04-06): Phase 5でCloudFront署名付きURL生成を実装
-    // 現段階ではfilePathをそのまま返却
     return {
       items: contents.map((c) => ({
         contentId: c.contentId,
         contentName: c.contentName,
         statusCategory: c.statusCategory,
-        downloadUrl: c.filePath ?? null,
+        downloadUrl: c.filePath ? this.storageService.signContentUrl(c.filePath) : null,
         version: c.version,
         checksum: c.checksum,
       })),

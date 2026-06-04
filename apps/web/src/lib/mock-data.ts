@@ -18,7 +18,7 @@ export type Unit = {
   connectionMode: "online" | "offline"
   status: "normal" | "warning" | "stop" | "maintenance"
   alertMessage: string | null
-  licenseStatus: "valid" | "expired" | "unknown"
+  licenseStatus: "valid" | "expired" | "suspended" | "unknown"
   licenseExpiredAt: string | null
   lastSeenAt: string | null
   createdAt: string
@@ -35,6 +35,8 @@ export type Content = {
   filePath: string | null
   fileSize: string | null
   checksum: string | null
+  mimeType: string | null
+  uploadStatus: "none" | "uploading" | "ready" | "failed"
   version: number
   isActive: boolean
   createdAt: string
@@ -86,12 +88,12 @@ export const mockUnits: Unit[] = [
 ]
 
 export const mockContents: Content[] = [
-  { contentId: "CNT-00001", contentName: "リラクゼーション映像 Vol.1", language: "ja", deliveryType: "general", statusCategory: "status1", filePath: "/contents/2026/03/relax_vol1.mp4", fileSize: "1073741824", checksum: "a1b2c3d4e5f6", version: 3, isActive: true, createdAt: "2026-03-01T00:00:00.000Z", updatedAt: "2026-05-20T00:00:00.000Z", assignedSiteCount: 5 },
-  { contentId: "CNT-00002", contentName: "アクアセラピー映像 Vol.1", language: "ja", deliveryType: "general", statusCategory: "status1", filePath: "/contents/2026/03/aqua_vol1.mp4", fileSize: "2147483648", checksum: "b2c3d4e5f6a7", version: 2, isActive: true, createdAt: "2026-03-10T00:00:00.000Z", updatedAt: "2026-05-15T00:00:00.000Z", assignedSiteCount: 7 },
-  { contentId: "CNT-00003", contentName: "季節限定：桜スペシャル", language: "ja", deliveryType: "limited", statusCategory: "status2", filePath: "/contents/2026/03/sakura_sp.mp4", fileSize: "536870912", checksum: "c3d4e5f6a7b8", version: 1, isActive: true, createdAt: "2026-03-20T00:00:00.000Z", updatedAt: "2026-03-20T00:00:00.000Z", assignedSiteCount: 3 },
-  { contentId: "CNT-00004", contentName: "Relaxation Movie Vol.1", language: "en", deliveryType: "general", statusCategory: "status1", filePath: "/contents/2026/04/relax_en_vol1.mp4", fileSize: "1073741824", checksum: "d4e5f6a7b8c9", version: 1, isActive: true, createdAt: "2026-04-01T00:00:00.000Z", updatedAt: "2026-04-01T00:00:00.000Z", assignedSiteCount: 2 },
-  { contentId: "CNT-00005", contentName: "メンテナンスガイド映像", language: "ja", deliveryType: "general", statusCategory: "status3", filePath: "/contents/2026/04/maintenance.mp4", fileSize: "268435456", checksum: "e5f6a7b8c9d0", version: 1, isActive: true, createdAt: "2026-04-15T00:00:00.000Z", updatedAt: "2026-04-15T00:00:00.000Z", assignedSiteCount: 7 },
-  { contentId: "CNT-00006", contentName: "夏季限定：マリンブルー", language: "ja", deliveryType: "limited", statusCategory: "status1", filePath: null, fileSize: null, checksum: null, version: 1, isActive: true, createdAt: "2026-05-25T00:00:00.000Z", updatedAt: "2026-05-25T00:00:00.000Z", assignedSiteCount: 0 },
+  { contentId: "CNT-00001", contentName: "リラクゼーション映像 Vol.1", language: "ja", deliveryType: "general", statusCategory: "status1", filePath: "/contents/2026/03/relax_vol1.mp4", fileSize: "1073741824", checksum: "a1b2c3d4e5f6", mimeType: "video/mp4", uploadStatus: "ready", version: 3, isActive: true, createdAt: "2026-03-01T00:00:00.000Z", updatedAt: "2026-05-20T00:00:00.000Z", assignedSiteCount: 5 },
+  { contentId: "CNT-00002", contentName: "アクアセラピー映像 Vol.1", language: "ja", deliveryType: "general", statusCategory: "status1", filePath: "/contents/2026/03/aqua_vol1.mp4", fileSize: "2147483648", checksum: "b2c3d4e5f6a7", mimeType: "video/mp4", uploadStatus: "ready", version: 2, isActive: true, createdAt: "2026-03-10T00:00:00.000Z", updatedAt: "2026-05-15T00:00:00.000Z", assignedSiteCount: 7 },
+  { contentId: "CNT-00003", contentName: "季節限定：桜スペシャル", language: "ja", deliveryType: "limited", statusCategory: "status2", filePath: "/contents/2026/03/sakura_sp.mp4", fileSize: "536870912", checksum: "c3d4e5f6a7b8", mimeType: "video/mp4", uploadStatus: "ready", version: 1, isActive: true, createdAt: "2026-03-20T00:00:00.000Z", updatedAt: "2026-03-20T00:00:00.000Z", assignedSiteCount: 3 },
+  { contentId: "CNT-00004", contentName: "Relaxation Movie Vol.1", language: "en", deliveryType: "general", statusCategory: "status1", filePath: "/contents/2026/04/relax_en_vol1.mp4", fileSize: "1073741824", checksum: "d4e5f6a7b8c9", mimeType: "video/mp4", uploadStatus: "ready", version: 1, isActive: true, createdAt: "2026-04-01T00:00:00.000Z", updatedAt: "2026-04-01T00:00:00.000Z", assignedSiteCount: 2 },
+  { contentId: "CNT-00005", contentName: "メンテナンスガイド映像", language: "ja", deliveryType: "general", statusCategory: "status3", filePath: "/contents/2026/04/maintenance.mp4", fileSize: "268435456", checksum: "e5f6a7b8c9d0", mimeType: "video/mp4", uploadStatus: "ready", version: 1, isActive: true, createdAt: "2026-04-15T00:00:00.000Z", updatedAt: "2026-04-15T00:00:00.000Z", assignedSiteCount: 7 },
+  { contentId: "CNT-00006", contentName: "夏季限定：マリンブルー", language: "ja", deliveryType: "limited", statusCategory: "status1", filePath: null, fileSize: null, checksum: null, mimeType: null, uploadStatus: "none", version: 1, isActive: true, createdAt: "2026-05-25T00:00:00.000Z", updatedAt: "2026-05-25T00:00:00.000Z", assignedSiteCount: 0 },
 ]
 
 export const mockAlerts: DeviceAlert[] = [
@@ -155,6 +157,7 @@ export const statusLabels: Record<string, { label: string; variant: "default" | 
   maintenance: { label: "保守中", variant: "outline" },
   valid: { label: "有効", variant: "default" },
   expired: { label: "期限切れ", variant: "destructive" },
+  suspended: { label: "停止", variant: "destructive" },
   unknown: { label: "未確認", variant: "secondary" },
   online: { label: "オンライン", variant: "default" },
   offline: { label: "オフライン", variant: "secondary" },
@@ -163,6 +166,10 @@ export const statusLabels: Record<string, { label: string; variant: "default" | 
   status1: { label: "ステータス1", variant: "default" },
   status2: { label: "ステータス2", variant: "secondary" },
   status3: { label: "ステータス3", variant: "outline" },
+  none: { label: "未アップロード", variant: "secondary" },
+  uploading: { label: "アップロード中", variant: "outline" },
+  ready: { label: "配信可能", variant: "default" },
+  failed: { label: "失敗", variant: "destructive" },
   info: { label: "INFO", variant: "secondary" },
   error: { label: "ERROR", variant: "destructive" },
   critical: { label: "CRITICAL", variant: "destructive" },
