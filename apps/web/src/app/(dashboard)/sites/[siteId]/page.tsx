@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
@@ -15,26 +15,53 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { ArrowLeft, Pencil, Trash2, Box } from "lucide-react"
-import { mockSites, mockUnits, statusLabels, formatDate, formatDateTime } from "@/lib/mock-data"
+import { statusLabels, formatDate, formatDateTime, type Site, type Unit } from "@/lib/mock-data"
 import { SiteDialog } from "@/components/dialogs/site-dialog"
 import { DeleteDialog } from "@/components/dialogs/delete-dialog"
-import { api } from "@/lib/api-client"
+import { api, ApiClientError } from "@/lib/api-client"
 import { useAuth } from "@/lib/auth-context"
+
+type SiteDetail = Site & {
+  units?: Unit[]
+}
 
 export default function SiteDetailPage() {
   const router = useRouter()
   const { siteId } = useParams<{ siteId: string }>()
-  const site = mockSites.find((s) => s.siteId === siteId)
-  const units = mockUnits.filter((u) => u.siteId === siteId)
+  const [site, setSite] = useState<SiteDetail | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState("")
   const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const { admin } = useAuth()
   const canEdit = admin?.role === "master" || admin?.role === "editor"
 
+  const fetchSite = useCallback(async () => {
+    setIsLoading(true)
+    setError("")
+    try {
+      const data = await api.getSite(siteId)
+      setSite(data)
+    } catch (err) {
+      setSite(null)
+      setError(err instanceof ApiClientError ? err.message : "拠点詳細の取得に失敗しました")
+    } finally {
+      setIsLoading(false)
+    }
+  }, [siteId])
+
+  useEffect(() => {
+    void fetchSite()
+  }, [fetchSite])
+
+  if (isLoading && !site) {
+    return <p className="py-20 text-center text-sm text-muted-foreground">読み込み中...</p>
+  }
+
   if (!site) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-20">
-        <p className="text-muted-foreground">拠点が見つかりません</p>
+        <p className="text-muted-foreground">{error || "拠点が見つかりません"}</p>
         <Button variant="outline" render={<Link href="/sites" />}>
           <ArrowLeft className="mr-2 h-4 w-4" />
           拠点一覧に戻る
@@ -44,6 +71,7 @@ export default function SiteDetailPage() {
   }
 
   const st = statusLabels[site.status]
+  const units = site.units ?? []
 
   return (
     <div className="space-y-6">
@@ -189,7 +217,7 @@ export default function SiteDetailPage() {
             open={editOpen}
             onOpenChange={setEditOpen}
             site={site}
-            onSuccess={() => window.location.reload()}
+            onSuccess={fetchSite}
           />
           <DeleteDialog
             open={deleteOpen}

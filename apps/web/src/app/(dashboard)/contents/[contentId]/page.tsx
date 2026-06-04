@@ -1,32 +1,64 @@
 "use client"
 
-import { useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ArrowLeft, Pencil, Trash2, Film, MapPin, HardDrive, Hash } from "lucide-react"
-import { mockContents, mockSites, statusLabels, formatDate, formatFileSize } from "@/lib/mock-data"
+import { statusLabels, formatDate, formatFileSize, type Content } from "@/lib/mock-data"
 import { ContentDialog } from "@/components/dialogs/content-dialog"
 import { DeleteDialog } from "@/components/dialogs/delete-dialog"
-import { api } from "@/lib/api-client"
+import { api, ApiClientError } from "@/lib/api-client"
 import { useAuth } from "@/lib/auth-context"
+
+type AssignedSite = {
+  siteId: string
+  siteName: string
+}
+
+type ContentDetail = Content & {
+  assignedSites?: AssignedSite[]
+}
 
 export default function ContentDetailPage() {
   const router = useRouter()
   const { contentId } = useParams<{ contentId: string }>()
-  const content = mockContents.find((c) => c.contentId === contentId)
-  const assignedSites = mockSites.slice(0, content?.assignedSiteCount ?? 0)
+  const [content, setContent] = useState<ContentDetail | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState("")
   const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const { admin } = useAuth()
   const canEdit = admin?.role === "master" || admin?.role === "editor"
 
+  const fetchContent = useCallback(async () => {
+    setIsLoading(true)
+    setError("")
+    try {
+      const data = await api.getContent(contentId)
+      setContent(data)
+    } catch (err) {
+      setContent(null)
+      setError(err instanceof ApiClientError ? err.message : "コンテンツ詳細の取得に失敗しました")
+    } finally {
+      setIsLoading(false)
+    }
+  }, [contentId])
+
+  useEffect(() => {
+    void fetchContent()
+  }, [fetchContent])
+
+  if (isLoading && !content) {
+    return <p className="py-20 text-center text-sm text-muted-foreground">読み込み中...</p>
+  }
+
   if (!content) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-20">
-        <p className="text-muted-foreground">コンテンツが見つかりません</p>
+        <p className="text-muted-foreground">{error || "コンテンツが見つかりません"}</p>
         <Button variant="outline" render={<Link href="/contents" />}>
           <ArrowLeft className="mr-2 h-4 w-4" />
           コンテンツ一覧に戻る
@@ -34,6 +66,8 @@ export default function ContentDetailPage() {
       </div>
     )
   }
+
+  const assignedSites = content.assignedSites ?? []
 
   return (
     <div className="space-y-6">
@@ -133,7 +167,7 @@ export default function ContentDetailPage() {
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2 text-base">
               <MapPin className="h-4 w-4" />
-              配信対象拠点（{content.assignedSiteCount}拠点）
+              配信対象拠点（{assignedSites.length}拠点）
             </CardTitle>
             {canEdit && (
               <Button variant="outline" size="sm">
@@ -160,9 +194,6 @@ export default function ContentDetailPage() {
                     <p className="text-sm font-medium truncate">{site.siteName}</p>
                     <p className="text-xs text-muted-foreground">{site.siteId}</p>
                   </div>
-                  <Badge variant={statusLabels[site.status]?.variant ?? "secondary"} className="ml-auto text-[10px]">
-                    {statusLabels[site.status]?.label ?? site.status}
-                  </Badge>
                 </Link>
               ))}
             </div>
@@ -176,7 +207,7 @@ export default function ContentDetailPage() {
             open={editOpen}
             onOpenChange={setEditOpen}
             content={content}
-            onSuccess={() => window.location.reload()}
+            onSuccess={fetchContent}
           />
           <DeleteDialog
             open={deleteOpen}

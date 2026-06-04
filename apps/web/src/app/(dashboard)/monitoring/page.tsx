@@ -1,10 +1,12 @@
 "use client"
 
+import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Wifi, WifiOff, Box, MapPin } from "lucide-react"
-import { mockUnits, mockSites, statusLabels } from "@/lib/mock-data"
+import { statusLabels, type Site, type Unit } from "@/lib/mock-data"
+import { api, ApiClientError } from "@/lib/api-client"
 
 function timeSince(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
@@ -17,15 +19,41 @@ function timeSince(iso: string): string {
 }
 
 export default function MonitoringPage() {
-  const siteGroups = mockSites
+  const [units, setUnits] = useState<Unit[]>([])
+  const [sites, setSites] = useState<Site[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState("")
+
+  const fetchMonitoring = useCallback(async () => {
+    setIsLoading(true)
+    setError("")
+    try {
+      const [unitsData, sitesData] = await Promise.all([
+        api.getUnits({ limit: 100 }),
+        api.getSites({ limit: 100 }),
+      ])
+      setUnits(unitsData.items)
+      setSites(sitesData.items)
+    } catch (err) {
+      setError(err instanceof ApiClientError ? err.message : "稼働状況の取得に失敗しました")
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void fetchMonitoring()
+  }, [fetchMonitoring])
+
+  const siteGroups = sites
     .filter((s) => s.status !== "stopped")
     .map((site) => ({
       ...site,
-      units: mockUnits.filter((u) => u.siteId === site.siteId),
+      units: units.filter((u) => u.siteId === site.siteId),
     }))
 
-  const onlineCount = mockUnits.filter((u) => u.connectionMode === "online").length
-  const totalCount = mockUnits.length
+  const onlineCount = units.filter((u) => u.connectionMode === "online").length
+  const totalCount = units.length
 
   return (
     <div className="space-y-6">
@@ -35,6 +63,12 @@ export default function MonitoringPage() {
           全筐体のリアルタイム稼働状況を監視しています
         </p>
       </div>
+
+      {error && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          {error}
+        </div>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-3">
         <Card>
@@ -54,7 +88,7 @@ export default function MonitoringPage() {
               <Box className="h-6 w-6 text-[oklch(0.7_0.15_60)]" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{mockUnits.filter((u) => u.status === "warning").length}</p>
+              <p className="text-2xl font-bold">{units.filter((u) => u.status === "warning").length}</p>
               <p className="text-sm text-muted-foreground">警告中</p>
             </div>
           </CardContent>
@@ -65,7 +99,7 @@ export default function MonitoringPage() {
               <WifiOff className="h-6 w-6 text-destructive" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{mockUnits.filter((u) => u.connectionMode === "offline").length}</p>
+              <p className="text-2xl font-bold">{units.filter((u) => u.connectionMode === "offline").length}</p>
               <p className="text-sm text-muted-foreground">オフライン</p>
             </div>
           </CardContent>
@@ -73,7 +107,14 @@ export default function MonitoringPage() {
       </div>
 
       <div className="space-y-4">
-        {siteGroups.map((site) => (
+        {siteGroups.length === 0 ? (
+          <Card>
+            <CardContent className="py-10 text-center text-sm text-muted-foreground">
+              {isLoading ? "読み込み中..." : "稼働状況がありません"}
+            </CardContent>
+          </Card>
+        ) : (
+          siteGroups.map((site) => (
           <Card key={site.siteId}>
             <CardHeader className="pb-3">
               <div className="flex items-center gap-2">
@@ -136,7 +177,8 @@ export default function MonitoringPage() {
               </div>
             </CardContent>
           </Card>
-        ))}
+          ))
+        )}
       </div>
     </div>
   )

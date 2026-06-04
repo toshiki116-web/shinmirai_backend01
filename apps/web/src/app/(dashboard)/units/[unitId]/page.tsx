@@ -1,32 +1,67 @@
 "use client"
 
-import { useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ArrowLeft, Pencil, Trash2, Wifi, WifiOff, Shield, Clock } from "lucide-react"
-import { mockUnits, mockAlerts, statusLabels, formatDate, formatDateTime } from "@/lib/mock-data"
+import { statusLabels, formatDate, formatDateTime, type Unit } from "@/lib/mock-data"
 import { UnitDialog } from "@/components/dialogs/unit-dialog"
 import { DeleteDialog } from "@/components/dialogs/delete-dialog"
-import { api } from "@/lib/api-client"
+import { api, ApiClientError } from "@/lib/api-client"
 import { useAuth } from "@/lib/auth-context"
+
+type UnitAlert = {
+  id: string
+  alertType: string
+  detail: string | null
+  level: "info" | "warning" | "error" | "critical"
+  occurredAt: string
+}
+
+type UnitDetail = Unit & {
+  deviceAlerts?: UnitAlert[]
+}
 
 export default function UnitDetailPage() {
   const router = useRouter()
   const { unitId } = useParams<{ unitId: string }>()
-  const unit = mockUnits.find((u) => u.unitId === unitId)
-  const alerts = mockAlerts.filter((a) => a.unitId === unitId).slice(0, 5)
+  const [unit, setUnit] = useState<UnitDetail | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState("")
   const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const { admin } = useAuth()
   const canEdit = admin?.role === "master" || admin?.role === "editor"
 
+  const fetchUnit = useCallback(async () => {
+    setIsLoading(true)
+    setError("")
+    try {
+      const data = await api.getUnit(unitId)
+      setUnit(data)
+    } catch (err) {
+      setUnit(null)
+      setError(err instanceof ApiClientError ? err.message : "筐体詳細の取得に失敗しました")
+    } finally {
+      setIsLoading(false)
+    }
+  }, [unitId])
+
+  useEffect(() => {
+    void fetchUnit()
+  }, [fetchUnit])
+
+  if (isLoading && !unit) {
+    return <p className="py-20 text-center text-sm text-muted-foreground">読み込み中...</p>
+  }
+
   if (!unit) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-20">
-        <p className="text-muted-foreground">筐体が見つかりません</p>
+        <p className="text-muted-foreground">{error || "筐体が見つかりません"}</p>
         <Button variant="outline" render={<Link href="/units" />}>
           <ArrowLeft className="mr-2 h-4 w-4" />
           筐体一覧に戻る
@@ -36,6 +71,7 @@ export default function UnitDetailPage() {
   }
 
   const st = statusLabels[unit.status]
+  const alerts = (unit.deviceAlerts ?? []).slice(0, 5)
 
   return (
     <div className="space-y-6">
@@ -200,7 +236,7 @@ export default function UnitDetailPage() {
             open={editOpen}
             onOpenChange={setEditOpen}
             unit={unit}
-            onSuccess={() => window.location.reload()}
+            onSuccess={fetchUnit}
           />
           <DeleteDialog
             open={deleteOpen}

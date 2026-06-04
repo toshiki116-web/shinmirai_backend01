@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -10,23 +10,41 @@ import {
 } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import { Plus, Search, MapPin } from "lucide-react"
-import { mockSites, statusLabels, formatDate, type Site } from "@/lib/mock-data"
+import { statusLabels, formatDate, type Site } from "@/lib/mock-data"
 import { SiteDialog } from "@/components/dialogs/site-dialog"
 import { DeleteDialog } from "@/components/dialogs/delete-dialog"
-import { api } from "@/lib/api-client"
+import { api, ApiClientError } from "@/lib/api-client"
 import { useAuth } from "@/lib/auth-context"
 
 export default function SitesPage() {
+  const [sites, setSites] = useState<Site[]>([])
+  const [total, setTotal] = useState(0)
+  const [keyword, setKeyword] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState("")
   const [createOpen, setCreateOpen] = useState(false)
   const [editSite, setEditSite] = useState<Site | null>(null)
   const [deleteSite, setDeleteSite] = useState<Site | null>(null)
   const { admin } = useAuth()
   const canEdit = admin?.role === "master" || admin?.role === "editor"
 
-  function handleRefresh() {
-    // TODO(2026-06-01): API連携後はデータ再取得に置き換え
-    window.location.reload()
-  }
+  const fetchSites = useCallback(async () => {
+    setIsLoading(true)
+    setError("")
+    try {
+      const data = await api.getSites({ limit: 100, keyword: keyword || undefined })
+      setSites(data.items)
+      setTotal(data.total)
+    } catch (err) {
+      setError(err instanceof ApiClientError ? err.message : "拠点一覧の取得に失敗しました")
+    } finally {
+      setIsLoading(false)
+    }
+  }, [keyword])
+
+  useEffect(() => {
+    void fetchSites()
+  }, [fetchSites])
 
   return (
     <div className="space-y-6">
@@ -34,7 +52,7 @@ export default function SitesPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">拠点管理</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            全{mockSites.length}拠点を管理しています
+            全{total}拠点を管理しています
           </p>
         </div>
         {canEdit && (
@@ -45,13 +63,30 @@ export default function SitesPage() {
         )}
       </div>
 
+      {error && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+
       <Card>
         <CardHeader className="pb-4">
           <div className="flex items-center gap-3">
-            <div className="relative flex-1 max-w-sm">
+            <form
+              className="relative flex-1 max-w-sm"
+              onSubmit={(e) => {
+                e.preventDefault()
+                void fetchSites()
+              }}
+            >
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="拠点名・IDで検索" className="pl-9" />
-            </div>
+              <Input
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+                placeholder="拠点名・IDで検索"
+                className="pl-9"
+              />
+            </form>
           </div>
         </CardHeader>
         <CardContent className="p-0">
@@ -68,7 +103,14 @@ export default function SitesPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {mockSites.map((site) => {
+              {sites.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={canEdit ? 7 : 6} className="py-10 text-center text-muted-foreground">
+                    {isLoading ? "読み込み中..." : "拠点がありません"}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                sites.map((site) => {
                 const st = statusLabels[site.status]
                 return (
                   <TableRow key={site.siteId}>
@@ -122,7 +164,8 @@ export default function SitesPage() {
                     )}
                   </TableRow>
                 )
-              })}
+                })
+              )}
             </TableBody>
           </Table>
         </CardContent>
@@ -130,15 +173,15 @@ export default function SitesPage() {
 
       {canEdit && (
         <>
-          <SiteDialog open={createOpen} onOpenChange={setCreateOpen} onSuccess={handleRefresh} />
-          <SiteDialog open={!!editSite} onOpenChange={(v) => !v && setEditSite(null)} site={editSite} onSuccess={handleRefresh} />
+          <SiteDialog open={createOpen} onOpenChange={setCreateOpen} onSuccess={fetchSites} />
+          <SiteDialog open={!!editSite} onOpenChange={(v) => !v && setEditSite(null)} site={editSite} onSuccess={fetchSites} />
           <DeleteDialog
             open={!!deleteSite}
             onOpenChange={(v) => !v && setDeleteSite(null)}
             title="拠点を削除"
             description={`${deleteSite?.siteName}（${deleteSite?.siteId}）を削除します。この操作は取り消せません。`}
             onConfirm={() => api.deleteSite(deleteSite!.siteId)}
-            onSuccess={handleRefresh}
+            onSuccess={fetchSites}
           />
         </>
       )}

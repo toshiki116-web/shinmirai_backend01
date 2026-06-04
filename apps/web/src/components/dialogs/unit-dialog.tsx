@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { api, ApiClientError } from "@/lib/api-client"
-import { mockSites, type Unit } from "@/lib/mock-data"
+import { type Site, type Unit } from "@/lib/mock-data"
 import { Copy, Check } from "lucide-react"
 
 type Props = {
@@ -28,6 +28,7 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess }: Props) {
   const isEdit = !!unit
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
+  const [sites, setSites] = useState<Site[]>([])
   const [deviceToken, setDeviceToken] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
@@ -45,6 +46,12 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess }: Props) {
       setError("")
       setDeviceToken(null)
       setCopied(false)
+      void api.getSites({ limit: 100 })
+        .then((data) => setSites(data.items))
+        .catch((err) => {
+          setSites([])
+          setError(err instanceof ApiClientError ? err.message : "拠点一覧の取得に失敗しました")
+        })
     }
   }, [open, unit])
 
@@ -148,7 +155,7 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess }: Props) {
               className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
               <option value="">拠点を選択</option>
-              {mockSites.map((s) => (
+              {sites.map((s) => (
                 <option key={s.siteId} value={s.siteId}>
                   {s.siteName}（{s.siteId}）
                 </option>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -10,22 +10,41 @@ import {
 } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import { Plus, Search, Box, Wifi, WifiOff } from "lucide-react"
-import { mockUnits, statusLabels, formatDateTime, type Unit } from "@/lib/mock-data"
+import { statusLabels, formatDateTime, type Unit } from "@/lib/mock-data"
 import { UnitDialog } from "@/components/dialogs/unit-dialog"
 import { DeleteDialog } from "@/components/dialogs/delete-dialog"
-import { api } from "@/lib/api-client"
+import { api, ApiClientError } from "@/lib/api-client"
 import { useAuth } from "@/lib/auth-context"
 
 export default function UnitsPage() {
+  const [units, setUnits] = useState<Unit[]>([])
+  const [total, setTotal] = useState(0)
+  const [keyword, setKeyword] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState("")
   const [createOpen, setCreateOpen] = useState(false)
   const [editUnit, setEditUnit] = useState<Unit | null>(null)
   const [deleteUnit, setDeleteUnit] = useState<Unit | null>(null)
   const { admin } = useAuth()
   const canEdit = admin?.role === "master" || admin?.role === "editor"
 
-  function handleRefresh() {
-    window.location.reload()
-  }
+  const fetchUnits = useCallback(async () => {
+    setIsLoading(true)
+    setError("")
+    try {
+      const data = await api.getUnits({ limit: 100, keyword: keyword || undefined })
+      setUnits(data.items)
+      setTotal(data.total)
+    } catch (err) {
+      setError(err instanceof ApiClientError ? err.message : "筐体一覧の取得に失敗しました")
+    } finally {
+      setIsLoading(false)
+    }
+  }, [keyword])
+
+  useEffect(() => {
+    void fetchUnits()
+  }, [fetchUnits])
 
   return (
     <div className="space-y-6">
@@ -33,7 +52,7 @@ export default function UnitsPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">筐体管理</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            全{mockUnits.length}筐体を管理しています
+            全{total}筐体を管理しています
           </p>
         </div>
         {canEdit && (
@@ -48,35 +67,52 @@ export default function UnitsPage() {
         <Card className="border-l-4 border-l-chart-2">
           <CardContent className="pt-4">
             <p className="text-sm text-muted-foreground">正常</p>
-            <p className="text-2xl font-bold">{mockUnits.filter((u) => u.status === "normal").length}</p>
+            <p className="text-2xl font-bold">{units.filter((u) => u.status === "normal").length}</p>
           </CardContent>
         </Card>
         <Card className="border-l-4 border-l-[oklch(0.7_0.15_60)]">
           <CardContent className="pt-4">
             <p className="text-sm text-muted-foreground">警告</p>
-            <p className="text-2xl font-bold">{mockUnits.filter((u) => u.status === "warning").length}</p>
+            <p className="text-2xl font-bold">{units.filter((u) => u.status === "warning").length}</p>
           </CardContent>
         </Card>
         <Card className="border-l-4 border-l-destructive">
           <CardContent className="pt-4">
             <p className="text-sm text-muted-foreground">停止</p>
-            <p className="text-2xl font-bold">{mockUnits.filter((u) => u.status === "stop").length}</p>
+            <p className="text-2xl font-bold">{units.filter((u) => u.status === "stop").length}</p>
           </CardContent>
         </Card>
         <Card className="border-l-4 border-l-muted-foreground">
           <CardContent className="pt-4">
             <p className="text-sm text-muted-foreground">保守中</p>
-            <p className="text-2xl font-bold">{mockUnits.filter((u) => u.status === "maintenance").length}</p>
+            <p className="text-2xl font-bold">{units.filter((u) => u.status === "maintenance").length}</p>
           </CardContent>
         </Card>
       </div>
 
+      {error && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+
       <Card>
         <CardHeader className="pb-4">
-          <div className="relative flex-1 max-w-sm">
+          <form
+            className="relative flex-1 max-w-sm"
+            onSubmit={(e) => {
+              e.preventDefault()
+              void fetchUnits()
+            }}
+          >
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input placeholder="筐体ID・名前・PCUUIDで検索" className="pl-9" />
-          </div>
+            <Input
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              placeholder="筐体ID・名前・PCUUIDで検索"
+              className="pl-9"
+            />
+          </form>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
@@ -93,60 +129,68 @@ export default function UnitsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {mockUnits.map((unit) => (
-                <TableRow key={unit.unitId}>
-                  <TableCell className="font-mono text-xs">
-                    <Link href={`/units/${unit.unitId}`} className="text-primary hover:underline">
-                      {unit.unitId}
-                    </Link>
+              {units.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={canEdit ? 8 : 7} className="py-10 text-center text-muted-foreground">
+                    {isLoading ? "読み込み中..." : "筐体がありません"}
                   </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Box className="h-4 w-4 text-muted-foreground" />
-                      <span className="font-medium">{unit.unitName}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {unit.site ? (
-                      <Link href={`/sites/${unit.siteId}`} className="hover:text-foreground hover:underline">
-                        {unit.site.siteName}
+                </TableRow>
+              ) : (
+                units.map((unit) => (
+                  <TableRow key={unit.unitId}>
+                    <TableCell className="font-mono text-xs">
+                      <Link href={`/units/${unit.unitId}`} className="text-primary hover:underline">
+                        {unit.unitId}
                       </Link>
-                    ) : "-"}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {unit.connectionMode === "online" ? (
-                      <Wifi className="mx-auto h-4 w-4 text-chart-2" />
-                    ) : (
-                      <WifiOff className="mx-auto h-4 w-4 text-muted-foreground" />
-                    )}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <Badge variant={statusLabels[unit.status]?.variant ?? "secondary"}>
-                      {statusLabels[unit.status]?.label ?? unit.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <Badge variant={statusLabels[unit.licenseStatus]?.variant ?? "secondary"}>
-                      {statusLabels[unit.licenseStatus]?.label ?? unit.licenseStatus}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {unit.lastSeenAt ? formatDateTime(unit.lastSeenAt) : "-"}
-                  </TableCell>
-                  {canEdit && (
+                    </TableCell>
                     <TableCell>
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setEditUnit(unit)}>
-                          編集
-                        </Button>
-                        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-destructive hover:text-destructive" onClick={() => setDeleteUnit(unit)}>
-                          削除
-                        </Button>
+                      <div className="flex items-center gap-2">
+                        <Box className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-medium">{unit.unitName}</span>
                       </div>
                     </TableCell>
-                  )}
-                </TableRow>
-              ))}
+                    <TableCell className="text-sm text-muted-foreground">
+                      {unit.site ? (
+                        <Link href={`/sites/${unit.siteId}`} className="hover:text-foreground hover:underline">
+                          {unit.site.siteName}
+                        </Link>
+                      ) : "-"}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {unit.connectionMode === "online" ? (
+                        <Wifi className="mx-auto h-4 w-4 text-chart-2" />
+                      ) : (
+                        <WifiOff className="mx-auto h-4 w-4 text-muted-foreground" />
+                      )}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Badge variant={statusLabels[unit.status]?.variant ?? "secondary"}>
+                        {statusLabels[unit.status]?.label ?? unit.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Badge variant={statusLabels[unit.licenseStatus]?.variant ?? "secondary"}>
+                        {statusLabels[unit.licenseStatus]?.label ?? unit.licenseStatus}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {unit.lastSeenAt ? formatDateTime(unit.lastSeenAt) : "-"}
+                    </TableCell>
+                    {canEdit && (
+                      <TableCell>
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setEditUnit(unit)}>
+                            編集
+                          </Button>
+                          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-destructive hover:text-destructive" onClick={() => setDeleteUnit(unit)}>
+                            削除
+                          </Button>
+                        </div>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </CardContent>
@@ -154,15 +198,15 @@ export default function UnitsPage() {
 
       {canEdit && (
         <>
-          <UnitDialog open={createOpen} onOpenChange={setCreateOpen} onSuccess={handleRefresh} />
-          <UnitDialog open={!!editUnit} onOpenChange={(v) => !v && setEditUnit(null)} unit={editUnit} onSuccess={handleRefresh} />
+          <UnitDialog open={createOpen} onOpenChange={setCreateOpen} onSuccess={fetchUnits} />
+          <UnitDialog open={!!editUnit} onOpenChange={(v) => !v && setEditUnit(null)} unit={editUnit} onSuccess={fetchUnits} />
           <DeleteDialog
             open={!!deleteUnit}
             onOpenChange={(v) => !v && setDeleteUnit(null)}
             title="筐体を削除"
             description={`${deleteUnit?.unitName}（${deleteUnit?.unitId}）を削除します。この操作は取り消せません。`}
             onConfirm={() => api.deleteUnit(deleteUnit!.unitId)}
-            onSuccess={handleRefresh}
+            onSuccess={fetchUnits}
           />
         </>
       )}
