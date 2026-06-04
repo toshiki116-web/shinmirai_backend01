@@ -76,6 +76,8 @@ export class UnitsService {
   }
 
   async create(dto: CreateUnitDto) {
+    await this.ensureSiteExists(dto.siteId);
+
     // device_tokenを自動生成（作成時のレスポンスにのみ含める）
     const deviceToken = randomUUID();
 
@@ -97,6 +99,9 @@ export class UnitsService {
 
   async update(unitId: string, dto: UpdateUnitDto) {
     await this.ensureExists(unitId);
+    if (dto.siteId) {
+      await this.ensureSiteExists(dto.siteId);
+    }
 
     return this.prisma.unit.update({
       where: { unitId },
@@ -124,5 +129,13 @@ export class UnitsService {
       throw new NotFoundException(`筐体 ${unitId} が見つかりません`);
     }
     return unit;
+  }
+
+  private async ensureSiteExists(siteId: string) {
+    const site = await this.prisma.site.findUnique({ where: { siteId } });
+    if (!site || site.status === 'deleted') {
+      throw new NotFoundException(`拠点 ${siteId} が見つかりません`);
+    }
+    return site;
   }
 }
