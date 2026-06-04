@@ -49,3 +49,43 @@
   - **回帰ガード（静的）**: admin DTO・`units.service` の create/update・フロントの送信payload・`setPcUuid`/editable input に `pcUuid` が残っていないこと（grep）。残存は許可箇所（schema/findAll検索/device/詳細表示/モック）のみ。
 - **再発防止策**: `ValidationPipe` の `forbidNonWhitelisted: true` により、DTOに無い `pcUuid` はAPIレベルで400拒否され、admin経由の書き込みが構造的に不可能。
 - **デプロイ注意**: `forbidNonWhitelisted` のため、フロント（pcUuid送らない）とAPI（DTO除去）はセット必須。**web先行→api**の順でデプロイ（逆順だと旧web＋新apiで編集が400になる窓ができる）。
+
+---
+
+## BUG-003: 筐体編集中にアクセストークンが失効するとログアウトされる
+
+- **発生日**: 2026-06-04
+- **修正日**: 2026-06-04
+- **修正コミット**: 本コミット（`[feat] ... (BUG-003)`）
+- **症状**: 管理画面で筐体編集モーダルを開いたまま時間が経過し、「更新する」を押すとログアウトされる。ユーザーには拠点選択や更新操作が原因に見えるが、実際には失効後の最初の API リクエストが 401 になっていた。
+- **原因**: アクセストークンの有効期限が 15 分である一方、リフレッシュトークン機構が無かった。フロントの API client は 401 を受けると即 `clearToken()` と `/login` 遷移を行うため、正規セッション中でもアクセストークン失効時にログアウトされていた。
+- **修正内容**:
+  - `apps/api/prisma/schema.prisma` / `apps/api/prisma/migrations/20260604120000_add_refresh_token/migration.sql` - `refresh_tokens` テーブルを追加し、ハッシュ保存・7日 TTL・ローテーション運用に対応。
+  - `apps/api/src/auth/auth.service.ts` - login 時に refresh token を発行し、`refresh()` で旧 token を失効して新しい access/refresh token を発行、`logout()` で refresh token を冪等に失効。
+  - `apps/api/src/auth/auth.controller.ts` / `apps/api/src/auth/dto/refresh-token.dto.ts` - `POST /auth/refresh` と `POST /auth/logout` を追加。
+  - `apps/web/src/lib/api-client.ts` - access/refresh token を localStorage に保存し、401 時に single-flight で `/auth/refresh` を実行して元リクエストを1回だけ再送。
+  - `apps/web/src/lib/auth-context.tsx` / `apps/web/src/components/layout/header.tsx` / `apps/web/src/components/layout/app-sidebar.tsx` - login 保存を refresh token 対応にし、logout 時にサーバ側 token 失効を試行。
+- **再現テスト**:
+  - 修正前: ログイン後、アクセストークン失効後に筐体更新などの API 操作を行うと 401 を受けて `/login` に遷移。
+  - 修正後: localStorage の access token を不正値にして API 操作を行うと、`/auth/refresh` 後に元リクエストが再送される想定。refresh token が不正な場合は `/login` に遷移。
+  - 自動 E2E は未整備のため、実ブラウザ/DevTools での手動確認対象として残す。
+- **再発防止策**: アクセストークンは短命のまま維持し、401 時の自動リフレッシュ＋リフレッシュトークンのローテーションで、正規セッション中の不意のログアウトを構造的に防ぐ。将来的には httpOnly cookie 化と E2E 整備を検討する。
+
+---
+
+## BUG-004: 筐体作成/更新で不正な拠点IDを渡すと 500 になる
+
+- **発生日**: 2026-06-04
+- **修正日**: 2026-06-04
+- **修正コミット**: 本コミット（`[fix] ... (BUG-004)`）
+- **症状**: `POST /api/admin/units` または `PATCH /api/admin/units/:unitId` に存在しない `siteId` を渡すと、Prisma の外部キー制約違反が発生し、500 / `INTERNAL_ERROR` として返る。
+- **原因**: `units.service` の create/update が `siteId` の存在と未削除状態を検証せず、Prisma にそのまま渡していた。
+- **修正内容**:
+  - `apps/api/src/admin/units/units.service.ts` - `ensureSiteExists(siteId)` を追加。拠点が存在しない、または `status === "deleted"` の場合は `NotFoundException('拠点 ${siteId} が見つかりません')` を返す。
+  - create では必ず `dto.siteId` を検証。
+  - update では `dto.siteId` が指定された場合のみ検証。
+- **再現テスト**:
+  - 修正前: 不正な `siteId` を含む筐体作成/更新リクエストで 500。
+  - 修正後: 不正な `siteId` では 404 / 「拠点 ... が見つかりません」を返す想定。正常な `siteId` では従来どおり作成/更新成功。
+  - 自動 API テストは未整備のため、curl/Swagger での手動確認対象として残す。
+- **再発防止策**: 外部キー制約に到達する前に service 層で参照先の存在を検証し、業務上の入力エラーとして 404 を返す。将来的には service 単体テストまたは API E2E で不正 `siteId` ケースを固定する。
