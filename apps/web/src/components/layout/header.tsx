@@ -40,7 +40,7 @@ export function Header() {
             <User className="mr-2 h-4 w-4" />
             プロフィール
           </DropdownMenuItem>
-          <DropdownMenuItem className="text-destructive" onSelect={logout}>
+          <DropdownMenuItem className="text-destructive" onSelect={() => { void logout() }}>
             <LogOut className="mr-2 h-4 w-4" />
             ログアウト
           </DropdownMenuItem>

@@ -124,7 +124,7 @@ export function AppSidebar() {
           <SidebarMenuItem>
             <SidebarMenuButton
               className="text-sidebar-foreground/60 hover:text-sidebar-foreground"
-              onClick={logout}
+              onClick={() => { void logout() }}
             >
               <LogOut className="h-4 w-4" />
               <span>ログアウト</span>

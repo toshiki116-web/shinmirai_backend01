@@ -1,7 +1,7 @@
 "use client"
 
 import { createContext, useContext, useState, useEffect, useCallback } from "react"
-import { api, setToken, clearToken, isAuthenticated, type AdminRole } from "./api-client"
+import { api, setTokens, clearToken, getRefreshToken, isAuthenticated, type AdminRole } from "./api-client"
 
 type Admin = {
   id: string
@@ -16,7 +16,7 @@ type AuthContextType = {
   isLoggedIn: boolean
   isLoading: boolean
   login: (email: string, password: string) => Promise<void>
-  logout: () => void
+  logout: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
@@ -45,12 +45,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     const data = await api.login(email, password)
-    setToken(data.access_token)
+    setTokens(data.access_token, data.refresh_token)
     setAdmin(data.admin)
     localStorage.setItem("sinmirai_admin", JSON.stringify(data.admin))
   }, [])
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    const refreshToken = getRefreshToken()
+    if (refreshToken) {
+      try {
+        await api.logout(refreshToken)
+      } catch {
+        // ローカルのログアウトは必ず完了させる
+      }
+    }
     clearToken()
     setAdmin(null)
     localStorage.removeItem("sinmirai_admin")

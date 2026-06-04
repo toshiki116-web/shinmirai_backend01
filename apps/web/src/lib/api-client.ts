@@ -1,4 +1,12 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000/api"
+const ACCESS_TOKEN_KEY = "sinmirai_token"
+const REFRESH_TOKEN_KEY = "sinmirai_refresh_token"
+const ACCESS_TOKEN_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
+
+type TokenPair = {
+  access_token: string
+  refresh_token: string
+}
 
 type ApiResponse<T> = {
   result: "ok"
@@ -39,16 +47,28 @@ export class ApiClientError extends Error {
 
 function getToken(): string | null {
   if (typeof window === "undefined") return null
-  return localStorage.getItem("sinmirai_token")
+  return localStorage.getItem(ACCESS_TOKEN_KEY)
+}
+
+export function getRefreshToken(): string | null {
+  if (typeof window === "undefined") return null
+  return localStorage.getItem(REFRESH_TOKEN_KEY)
+}
+
+export function setTokens(accessToken: string, refreshToken: string) {
+  localStorage.setItem(ACCESS_TOKEN_KEY, accessToken)
+  localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken)
+  document.cookie = `sinmirai_token=${accessToken}; path=/; max-age=${ACCESS_TOKEN_COOKIE_MAX_AGE}; SameSite=Lax`
 }
 
 export function setToken(token: string) {
-  localStorage.setItem("sinmirai_token", token)
-  document.cookie = `sinmirai_token=${token}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`
+  localStorage.setItem(ACCESS_TOKEN_KEY, token)
+  document.cookie = `sinmirai_token=${token}; path=/; max-age=${ACCESS_TOKEN_COOKIE_MAX_AGE}; SameSite=Lax`
 }
 
 export function clearToken() {
-  localStorage.removeItem("sinmirai_token")
+  localStorage.removeItem(ACCESS_TOKEN_KEY)
+  localStorage.removeItem(REFRESH_TOKEN_KEY)
   document.cookie = "sinmirai_token=; path=/; max-age=0"
 }
 
@@ -56,9 +76,51 @@ export function isAuthenticated(): boolean {
   return !!getToken()
 }
 
+let refreshing: Promise<TokenPair> | null = null
+
+async function performRefresh(): Promise<TokenPair> {
+  const refreshToken = getRefreshToken()
+  if (!refreshToken) {
+    throw new ApiClientError(401, "UNAUTHORIZED", "認証が無効です。再ログインしてください。")
+  }
+
+  const res = await fetch(`${API_BASE}/auth/refresh`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  })
+  const body = await res.json()
+
+  if (!res.ok || body.result === "ng") {
+    const err = body as ApiError
+    throw new ApiClientError(res.status, err.error_code ?? "UNAUTHORIZED", err.message ?? "認証が無効です。再ログインしてください。")
+  }
+
+  const tokens = (body as ApiResponse<TokenPair>).data
+  setTokens(tokens.access_token, tokens.refresh_token)
+  return tokens
+}
+
+async function refreshTokensOnce(): Promise<TokenPair> {
+  if (!refreshing) {
+    refreshing = performRefresh().finally(() => {
+      refreshing = null
+    })
+  }
+  return refreshing
+}
+
+function redirectToLogin() {
+  clearToken()
+  if (typeof window !== "undefined") {
+    window.location.href = "/login"
+  }
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
+  retryOnUnauthorized = true,
 ): Promise<T> {
   const token = getToken()
   const headers: Record<string, string> = {
@@ -75,10 +137,15 @@ async function request<T>(
   })
 
   if (res.status === 401) {
-    clearToken()
-    if (typeof window !== "undefined") {
-      window.location.href = "/login"
+    if (retryOnUnauthorized && !path.startsWith("/auth/")) {
+      try {
+        await refreshTokensOnce()
+        return request<T>(path, options, false)
+      } catch {
+        redirectToLogin()
+      }
     }
+    redirectToLogin()
     throw new ApiClientError(401, "UNAUTHORIZED", "認証が無効です。再ログインしてください。")
   }
 
@@ -95,9 +162,21 @@ async function request<T>(
 export const api = {
   // 認証
   login: (email: string, password: string) =>
-    request<{ access_token: string; admin: { id: string; loginId: string | null; email: string; name: string; role: AdminRole } }>(
+    request<{ access_token: string; refresh_token: string; admin: { id: string; loginId: string | null; email: string; name: string; role: AdminRole } }>(
       "/auth/login",
       { method: "POST", body: JSON.stringify({ email, password }) },
+    ),
+  refresh: (refreshToken: string) =>
+    request<TokenPair>(
+      "/auth/refresh",
+      { method: "POST", body: JSON.stringify({ refresh_token: refreshToken }) },
+      false,
+    ),
+  logout: (refreshToken: string) =>
+    request<{ success: boolean }>(
+      "/auth/logout",
+      { method: "POST", body: JSON.stringify({ refresh_token: refreshToken }) },
+      false,
     ),
 
   // ユーザー管理
