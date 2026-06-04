@@ -1,8 +1,8 @@
 # 新・ミライ人間洗濯機 API 仕様書
 
 - **バージョン**: 0.1.0
-- **最終更新**: 2026-04-20
-- **対象読者**: フロントエンド開発者
+- **最終更新**: 2026-06-04
+- **対象読者**: フロントエンド開発者・筐体アプリ開発者
 
 ---
 
@@ -78,9 +78,30 @@
 Authorization: Bearer <access_token>
 ```
 
-- `POST /api/auth/login` で発行。
-- JWT ペイロード: `{ sub: adminId, loginId, iat, exp }`。
+- `POST /api/auth/login` で発行。**メールアドレス + パスワード**で認証。
+- JWT ペイロード: `{ sub: adminId, email, role, iat, exp }`。
+- **アクセストークン有効期限: 15分（900秒）**。期限切れ時は `POST /api/auth/refresh` で再発行。
 - 無効・失効時は 401。
+
+#### トークンライフサイクル（リフレッシュ）
+
+- ログイン時に `access_token`（15分）と `refresh_token`（**7日**）を発行。
+- `refresh_token` はサーバー側で **SHA-256 ハッシュ化して DB 保存**（平文は保持しない）。
+- `POST /api/auth/refresh` でアクセストークンを再発行。**リフレッシュトークンはローテーション**され、旧トークンは即時失効する（新しい `refresh_token` を返却するので必ず差し替えること）。
+- `POST /api/auth/logout` で `refresh_token` を失効。
+- フロント実装方針: API 呼び出しが 401 を返したら `refresh` を一度試行し、成功すれば元のリクエストを再送、失敗すればログイン画面へ遷移。
+
+#### ロール（RBAC）
+
+管理画面系の各エンドポイントはロールで権限制御される。JWT の `role` クレームで判定。
+
+| ロール | 権限範囲 |
+| --- | --- |
+| `master` | 全操作。ユーザー管理 API は master のみ |
+| `editor` | 拠点・筐体・コンテンツの作成/更新/削除が可能 |
+| `viewer` | 参照（GET）のみ |
+
+権限不足時は 403（`FORBIDDEN`）。
 
 #### 筐体系: device_token Bearer
 
@@ -128,13 +149,13 @@ Authorization: Bearer <device_token>
 
 #### POST /api/auth/login
 
-管理者ログイン（JWT 発行）。**認証不要**。
+管理者ログイン（アクセストークン・リフレッシュトークン発行）。**認証不要**。
 
 **リクエスト**
 
 | フィールド | 型 | 必須 | 説明 |
 | --- | --- | --- | --- |
-| `loginId` | string | ○ | ログインID |
+| `email` | string (email) | ○ | メールアドレス |
 | `password` | string | ○ | パスワード |
 
 **レスポンス 201**
@@ -144,10 +165,13 @@ Authorization: Bearer <device_token>
   "result": "ok",
   "data": {
     "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6...",
+    "refresh_token": "0f3a...（96桁のhex文字列）",
     "admin": {
       "id": "<uuid>",
       "loginId": "admin",
-      "name": "Administrator"
+      "email": "kushida@artifice-inc.com",
+      "name": "Administrator",
+      "role": "master"
     }
   },
   "message": ""
@@ -156,7 +180,52 @@ Authorization: Bearer <device_token>
 
 **エラー**
 
-- 401: `ログインIDまたはパスワードが正しくありません`
+- 401: `メールアドレスまたはパスワードが正しくありません`（未存在・無効ユーザー含む）
+
+#### POST /api/auth/refresh
+
+リフレッシュトークンを検証し、新しいアクセストークン・リフレッシュトークンを発行。**認証不要**（リフレッシュトークン自体が認証材料）。
+
+**リクエスト**
+
+| フィールド | 型 | 必須 | 説明 |
+| --- | --- | --- | --- |
+| `refresh_token` | string | ○ | ログイン/前回リフレッシュで取得したトークン |
+
+**レスポンス 201**
+
+```json
+{
+  "result": "ok",
+  "data": {
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6...",
+    "refresh_token": "新しいトークン（旧トークンは失効）"
+  },
+  "message": ""
+}
+```
+
+**エラー**
+
+- 401: `リフレッシュトークンが無効です`（未存在・失効済み・期限切れ）／`管理ユーザーが無効です`
+
+#### POST /api/auth/logout
+
+リフレッシュトークンを失効する。**認証不要**。
+
+**リクエスト**
+
+| フィールド | 型 | 必須 | 説明 |
+| --- | --- | --- | --- |
+| `refresh_token` | string | ○ | 失効させるトークン |
+
+**レスポンス 201**
+
+```json
+{ "result": "ok", "data": { "success": true }, "message": "" }
+```
+
+> 未存在・失効済みトークンを渡しても 200 系で `success: true` を返す（冪等）。
 
 ---
 
@@ -296,10 +365,12 @@ Authorization: Bearer <device_token>
 
 | フィールド | 型 | 必須 | 既定 | 説明 |
 | --- | --- | --- | --- | --- |
-| `siteId` | string | ○ | - | 所属拠点ID |
+| `siteId` | string | ○ | - | 所属拠点ID（**存在しない/削除済みの場合 404**） |
 | `unitName` | string | ○ | - | 筐体名 |
-| `pcUuid` | string (UUID v4) | - | - | PC端末UUID |
 | `connectionMode` | `'online' \| 'offline'` | - | `'online'` | 接続モード |
+
+> `pcUuid` は登録時に指定できない（筐体側の `POST /api/device/activate` で登録される）。管理画面では**表示専用**。
+> 必要ロール: `master` / `editor`。
 
 **レスポンス 201**
 
@@ -323,13 +394,27 @@ Authorization: Bearer <device_token>
 
 **リクエスト**（すべて任意）
 
-| フィールド | 型 |
-| --- | --- |
-| `siteId` | string |
-| `unitName` | string |
-| `pcUuid` | string |
-| `connectionMode` | `'online' \| 'offline'` |
-| `note` | string |
+| フィールド | 型 | 説明 |
+| --- | --- | --- |
+| `siteId` | string | 変更時は存在検証あり（未存在/削除済みは 404） |
+| `unitName` | string | 筐体名 |
+| `connectionMode` | `'online' \| 'offline'` | 接続モード |
+| `note` | string | 備考（※現状サーバー側で永続化されない） |
+
+> `pcUuid` は更新不可（表示専用）。必要ロール: `master` / `editor`。
+
+#### PATCH /api/admin/units/:unitId/license
+
+筐体ライセンス状態を更新する。必要ロール: `master` / `editor`。
+
+**リクエスト**
+
+| フィールド | 型 | 必須 | 説明 |
+| --- | --- | --- | --- |
+| `licenseStatus` | `'valid' \| 'expired' \| 'suspended' \| 'unknown'` | ○ | ライセンス状態 |
+| `licenseExpiredAt` | ISO8601 datetime | - | 有効期限。`null` または省略可 |
+
+**レスポンス 200**: 更新後の筐体オブジェクト。
 
 #### DELETE /api/admin/units/:unitId
 
@@ -362,9 +447,11 @@ Authorization: Bearer <device_token>
   "language": "ja",
   "deliveryType": "general",
   "statusCategory": "status1",
-  "filePath": "/contents/2026/04/video.mp4",
+  "filePath": "contents/CNT-00001/550e8400-e29b-41d4-a716-446655440000.mp4",
   "fileSize": "1234567890",
   "checksum": "abc123def456",
+  "mimeType": "video/mp4",
+  "uploadStatus": "ready",
   "version": 1,
   "isActive": true,
   "createdAt": "2026-04-01T00:00:00.000Z",
@@ -374,6 +461,7 @@ Authorization: Bearer <device_token>
 ```
 
 > `fileSize` は BigInt のため**文字列**で返却される。フロント側で BigInt/数値変換時に注意。
+> `filePath` は S3 バケット相対のオブジェクトキー。フル URL は保存しない。
 
 #### GET /api/admin/contents/:contentId
 
@@ -397,6 +485,41 @@ Authorization: Bearer <device_token>
 
 `POST` と同じフィールドを部分的に指定可能。`siteIds` を含めると**既存の割り当てをすべて置換**（トランザクション処理）。`version` は自動インクリメント。
 
+#### POST /api/admin/contents/:contentId/upload-url
+
+ブラウザから S3 へ動画ファイルを直接 PUT するための署名付き URL を発行する。必要ロール: `master` / `editor`。成功時に対象コンテンツは `uploadStatus = 'uploading'` になる。
+
+**リクエスト**
+
+| フィールド | 型 | 必須 | 説明 |
+| --- | --- | --- | --- |
+| `fileName` | string | ○ | 元ファイル名 |
+| `contentType` | string | ○ | `video/mp4` など許可済み MIME |
+| `fileSize` | number | ○ | バイト数。アップロード上限以下 |
+
+**レスポンス 201**
+
+```json
+{
+  "uploadUrl": "https://sinmirai-contents-741448957802-apne3.s3.ap-northeast-3.amazonaws.com/...",
+  "objectKey": "contents/CNT-00001/550e8400-e29b-41d4-a716-446655440000.mp4",
+  "expiresIn": 900
+}
+```
+
+#### POST /api/admin/contents/:contentId/upload-complete
+
+S3 への PUT 完了後に呼び出し、`HeadObject` で実在確認してメタデータを確定する。必要ロール: `master` / `editor`。成功時に `uploadStatus = 'ready'`、失敗時に `uploadStatus = 'failed'` へ更新される。
+
+**リクエスト**
+
+| フィールド | 型 | 必須 | 説明 |
+| --- | --- | --- | --- |
+| `objectKey` | string | ○ | `upload-url` で返却された S3 オブジェクトキー |
+| `checksum` | string | - | 任意。未指定時は S3 ETag を使用 |
+
+**レスポンス 200**: 更新後のコンテンツオブジェクト。
+
 #### DELETE /api/admin/contents/:contentId
 
 論理削除（`isActive = false`）。
@@ -419,6 +542,99 @@ Authorization: Bearer <device_token>
   "assignedSiteIds": ["LOC-0001", "LOC-0002"]
 }
 ```
+
+---
+
+### 3.6 ユーザー管理（Users）
+
+管理ユーザー（管理画面アカウント）の CRUD。**全エンドポイント `master` ロール限定**（それ以外は 403）。
+
+レスポンスの user オブジェクトは以下の項目を返す（**パスワードハッシュは一切返却しない**）。
+
+```json
+{
+  "id": "<uuid>",
+  "loginId": null,
+  "email": "user@example.com",
+  "name": "山田 太郎",
+  "role": "editor",
+  "note": null,
+  "isActive": true,
+  "createdAt": "2026-06-01T00:00:00.000Z",
+  "updatedAt": "2026-06-01T00:00:00.000Z"
+}
+```
+
+#### パスワードポリシー
+
+- **12文字以上**
+- 英大文字・英小文字・数字・記号のうち **3種類以上**を含む
+- 違反時は 422（`UNPROCESSABLE_ENTITY`）相当のバリデーションエラー
+
+#### GET /api/admin/users
+
+**クエリ**
+
+| パラメータ | 型 | 説明 |
+| --- | --- | --- |
+| `page` / `limit` | number | ページネーション |
+| `keyword` | string | メールアドレス・名前で部分一致 |
+| `role` | `'master' \| 'editor' \| 'viewer'` | ロール絞り込み |
+| `isActive` | boolean | 有効フラグ絞り込み |
+
+**レスポンス 200**: `{ items, total, page, limit }`（`createdAt` 降順）。
+
+#### GET /api/admin/users/:id
+
+ユーザー詳細。**エラー**: 404（未存在）。
+
+#### POST /api/admin/users
+
+**リクエスト**
+
+| フィールド | 型 | 必須 | 説明 |
+| --- | --- | --- | --- |
+| `email` | string (email) | ○ | メールアドレス（重複時 409） |
+| `name` | string | ○ | 名前 |
+| `password` | string | ○ | パスワード（上記ポリシー準拠） |
+| `role` | `'master' \| 'editor' \| 'viewer'` | ○ | ロール |
+| `note` | string | - | 備考 |
+
+**レスポンス 201**: 作成後 user オブジェクト。**エラー**: 409（メール重複）。
+
+#### PATCH /api/admin/users/:id
+
+**リクエスト**（すべて任意）
+
+| フィールド | 型 | 説明 |
+| --- | --- | --- |
+| `email` | string (email) | 変更時は重複検証（409） |
+| `name` | string | 名前 |
+| `role` | `'master' \| 'editor' \| 'viewer'` | ロール |
+| `note` | string | 備考 |
+| `isActive` | boolean | 有効フラグ |
+
+**ガードレール**（不正操作は 400）:
+
+- 自分自身を無効化（`isActive: false`）できない
+- 自分自身のロールを `master` 以外へ降格できない
+- 最後の有効な `master` を降格・無効化できない
+
+#### PATCH /api/admin/users/:id/password
+
+パスワードリセット。
+
+**リクエスト**
+
+| フィールド | 型 | 必須 | 説明 |
+| --- | --- | --- | --- |
+| `password` | string | ○ | 新パスワード（ポリシー準拠） |
+
+#### DELETE /api/admin/users/:id
+
+ユーザーの**無効化**（`isActive = false`、物理削除はしない）。
+
+**ガードレール**（400）: 自分自身は削除不可／最後の有効な `master` は無効化不可。
 
 ---
 
@@ -479,7 +695,12 @@ Authorization: Bearer <device_token>
 
 ### 4.3 GET /api/device/contents
 
-当該筐体の拠点に配信可能なコンテンツ一覧。
+当該筐体に配信可能なコンテンツ一覧。`uploadStatus = 'ready'` かつ `filePath` があるコンテンツのみ返却する。
+
+配信ルール:
+
+- `deliveryType = 'general'`: 全拠点に配信
+- `deliveryType = 'limited'`: 当該筐体の拠点に割り当てられたコンテンツのみ配信
 
 **クエリ**
 
@@ -496,7 +717,7 @@ Authorization: Bearer <device_token>
       "contentId": "CNT-00001",
       "contentName": "臨床試験ガイダンス映像 #04",
       "statusCategory": "status1",
-      "downloadUrl": "/contents/2026/04/video.mp4",
+      "downloadUrl": "https://d1v1pzc5e0jqa0.cloudfront.net/contents/CNT-00001/550e8400-e29b-41d4-a716-446655440000.mp4?Expires=...",
       "version": 1,
       "checksum": "abc123def456"
     }
@@ -504,7 +725,7 @@ Authorization: Bearer <device_token>
 }
 ```
 
-> 現段階では `downloadUrl` は `filePath` をそのまま返却。Phase 5 で CloudFront 署名付き URL に置き換え予定。
+> `downloadUrl` は CloudFront 署名付き URL。筐体はこの URL を直接ダウンロードに使用する。署名無しの CloudFront 直アクセスは 403。
 
 ---
 
@@ -612,12 +833,14 @@ Authorization: Bearer <device_token>
 
 | Enum | 値 |
 | --- | --- |
+| AdminRole | `master`, `editor`, `viewer` |
 | SiteStatus | `active`, `warning`, `stopped`, `deleted` |
 | UnitStatus | `normal`, `warning`, `stop`, `maintenance`, `deleted` |
 | ConnectionMode | `online`, `offline` |
-| LicenseStatus | `valid`, `expired`, `unknown` |
+| LicenseStatus | `valid`, `expired`, `suspended`, `unknown` |
 | DeliveryType | `general`, `limited` |
 | StatusCategory | `status1`, `status2`, `status3` |
+| ContentUploadStatus | `none`, `uploading`, `ready`, `failed` |
 | AlertLevel | `info`, `warning`, `error`, `critical` |
 | LogLevel | `DEBUG`, `INFO`, `WARN`, `ERROR` |
 | LogType | `application`, `error`, `event` |
@@ -626,10 +849,12 @@ Authorization: Bearer <device_token>
 
 ## 6. 実装上の注意・未確定事項
 
-- **コンテンツファイルアップロード**: `POST /api/admin/contents` でメタデータのみ登録。実ファイルアップロード API は Phase 5 で S3 直接アップロード（署名付きURL方式）に切り出す予定。
-- **CloudFront 署名付きURL**: 現段階の `downloadUrl` は `filePath` をそのまま返却。Phase 5 で置換予定のため、フロント実装では URL をそのまま `<video>` の `src` に渡す前提で問題ないが、将来 URL 形式が変わる点に留意。
+- **コンテンツファイルアップロード**: メタデータ登録後、`upload-url` で S3 署名付き PUT URL を取得し、ブラウザから S3 へ直接アップロードする。完了後は `upload-complete` でメタデータを確定する。
+- **CloudFront 署名付きURL**: 筐体向け `downloadUrl` は CloudFront 署名付き URL。署名期限は環境変数 `SIGNED_URL_TTL_SECONDS` で制御する。
 - **fileSize**: BigInt のため文字列返却。
 - **論理削除**: 一覧取得では自動除外される。管理画面で「削除済みを含めて表示」する機能が必要な場合は API 拡張が必要（現状未対応）。
+- **認証トークン**: アクセストークンは 15分、リフレッシュトークンは 7日。リフレッシュはローテーション方式（旧トークン即時失効）のため、フロントは `refresh` レスポンスの新トークンへ必ず差し替えること。
+- **ユーザー管理 API**: `master` ロール専用。最後の有効な master を無効化・降格できないガードあり。
 - **Swagger UI**: `GET /api/docs` で OpenAPI 3 の対話型ドキュメントが参照可能。最新仕様はこちらが正となる。
 
 ---
