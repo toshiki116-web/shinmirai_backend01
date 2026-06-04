@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Droplets } from "lucide-react"
+import { setTokens } from "@/lib/api-client"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000/api"
 
@@ -36,10 +37,8 @@ export default function LoginPage() {
         return
       }
 
-      const token = body.data.access_token
-      localStorage.setItem("sinmirai_token", token)
+      setTokens(body.data.access_token, body.data.refresh_token)
       localStorage.setItem("sinmirai_admin", JSON.stringify(body.data.admin))
-      document.cookie = `sinmirai_token=${token}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`
 
       router.push("/")
     } catch {

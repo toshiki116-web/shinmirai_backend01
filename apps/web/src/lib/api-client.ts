@@ -142,7 +142,7 @@ async function request<T>(
         await refreshTokensOnce()
         return request<T>(path, options, false)
       } catch {
-        redirectToLogin()
+        // 下の共通処理でログイン画面へ戻す
       }
     }
     redirectToLogin()
