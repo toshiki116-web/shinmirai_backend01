@@ -83,7 +83,6 @@ export class UnitsService {
       data: {
         siteId: dto.siteId,
         unitName: dto.unitName,
-        pcUuid: dto.pcUuid,
         connectionMode: dto.connectionMode ?? 'online',
         deviceToken,
       },
@@ -104,7 +103,6 @@ export class UnitsService {
       data: {
         siteId: dto.siteId,
         unitName: dto.unitName,
-        pcUuid: dto.pcUuid,
         connectionMode: dto.connectionMode,
       },
     });

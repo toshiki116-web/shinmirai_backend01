@@ -34,14 +34,12 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess }: Props) {
 
   const [siteId, setSiteId] = useState("")
   const [unitName, setUnitName] = useState("")
-  const [pcUuid, setPcUuid] = useState("")
   const [connectionMode, setConnectionMode] = useState("online")
 
   useEffect(() => {
     if (open) {
       setSiteId(unit?.siteId ?? "")
       setUnitName(unit?.unitName ?? "")
-      setPcUuid(unit?.pcUuid ?? "")
       setConnectionMode(unit?.connectionMode ?? "online")
       setError("")
       setDeviceToken(null)
@@ -65,7 +63,6 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess }: Props) {
         await api.updateUnit(unit!.unitId, {
           siteId: siteId || undefined,
           unitName,
-          pcUuid: pcUuid || undefined,
           connectionMode: connectionMode as "online" | "offline",
         })
         onOpenChange(false)
@@ -74,7 +71,6 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess }: Props) {
         const result = await api.createUnit({
           siteId,
           unitName,
-          pcUuid: pcUuid || undefined,
           connectionMode,
         })
         if (result.deviceToken) {
@@ -173,13 +169,13 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess }: Props) {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="unit-uuid">PC UUID</Label>
-            <Input
-              id="unit-uuid"
-              value={pcUuid}
-              onChange={(e) => setPcUuid(e.target.value)}
-              placeholder="例: 550e8400-e29b-41d4-a716-446655440000"
-            />
+            <Label>PC UUID</Label>
+            <p className="rounded-md border border-input bg-muted/50 px-3 py-2 font-mono text-xs text-muted-foreground break-all">
+              {unit?.pcUuid ?? "未登録（端末接続時に自動登録）"}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              ※筐体端末から自動登録される値です。管理画面では変更できません。
+            </p>
           </div>
           <div className="space-y-2">
             <Label>接続モード</Label>

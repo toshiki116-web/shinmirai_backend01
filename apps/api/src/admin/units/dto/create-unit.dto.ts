@@ -12,11 +12,6 @@ export class CreateUnitDto {
   @IsNotEmpty({ message: '筐体名は必須です' })
   unitName!: string;
 
-  @ApiPropertyOptional({ description: 'PC端末UUID' })
-  @IsOptional()
-  @IsString()
-  pcUuid?: string;
-
   @ApiPropertyOptional({
     description: '接続モード',
     enum: ['online', 'offline'],

@@ -12,11 +12,6 @@ export class UpdateUnitDto {
   @IsString()
   unitName?: string;
 
-  @ApiPropertyOptional({ description: 'PC端末UUID' })
-  @IsOptional()
-  @IsString()
-  pcUuid?: string;
-
   @ApiPropertyOptional({ description: '接続モード', enum: ['online', 'offline'] })
   @IsOptional()
   @IsIn(['online', 'offline'])

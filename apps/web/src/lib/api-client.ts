@@ -148,9 +148,9 @@ export const api = {
     return request<{ items: any[]; total: number; page: number; limit: number }>(`/admin/units?${q}`)
   },
   getUnit: (unitId: string) => request<any>(`/admin/units/${unitId}`),
-  createUnit: (data: { siteId: string; unitName: string; pcUuid?: string; connectionMode?: string }) =>
+  createUnit: (data: { siteId: string; unitName: string; connectionMode?: string }) =>
     request<any>("/admin/units", { method: "POST", body: JSON.stringify(data) }),
-  updateUnit: (unitId: string, data: Partial<{ siteId: string; unitName: string; pcUuid: string; connectionMode: string }>) =>
+  updateUnit: (unitId: string, data: Partial<{ siteId: string; unitName: string; connectionMode: string }>) =>
     request<any>(`/admin/units/${unitId}`, { method: "PATCH", body: JSON.stringify(data) }),
   deleteUnit: (unitId: string) =>
     request<any>(`/admin/units/${unitId}`, { method: "DELETE" }),
