@@ -11,6 +11,7 @@ import { mockUnits, mockAlerts, statusLabels, formatDate, formatDateTime } from 
 import { UnitDialog } from "@/components/dialogs/unit-dialog"
 import { DeleteDialog } from "@/components/dialogs/delete-dialog"
 import { api } from "@/lib/api-client"
+import { useAuth } from "@/lib/auth-context"
 
 export default function UnitDetailPage() {
   const router = useRouter()
@@ -19,6 +20,8 @@ export default function UnitDetailPage() {
   const alerts = mockAlerts.filter((a) => a.unitId === unitId).slice(0, 5)
   const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const { admin } = useAuth()
+  const canEdit = admin?.role === "master" || admin?.role === "editor"
 
   if (!unit) {
     return (
@@ -56,16 +59,18 @@ export default function UnitDetailPage() {
           </div>
           <p className="mt-0.5 font-mono text-sm text-muted-foreground">{unit.unitId}</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setEditOpen(true)}>
-            <Pencil className="mr-2 h-4 w-4" />
-            編集
-          </Button>
-          <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
-            <Trash2 className="mr-2 h-4 w-4" />
-            削除
-          </Button>
-        </div>
+        {canEdit && (
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setEditOpen(true)}>
+              <Pencil className="mr-2 h-4 w-4" />
+              編集
+            </Button>
+            <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
+              <Trash2 className="mr-2 h-4 w-4" />
+              削除
+            </Button>
+          </div>
+        )}
       </div>
 
       {unit.alertMessage && (
@@ -189,20 +194,24 @@ export default function UnitDetailPage() {
         </CardContent>
       </Card>
 
-      <UnitDialog
-        open={editOpen}
-        onOpenChange={setEditOpen}
-        unit={unit}
-        onSuccess={() => window.location.reload()}
-      />
-      <DeleteDialog
-        open={deleteOpen}
-        onOpenChange={setDeleteOpen}
-        title="筐体を削除"
-        description={`${unit.unitName}（${unit.unitId}）を削除します。この操作は取り消せません。`}
-        onConfirm={() => api.deleteUnit(unit.unitId)}
-        onSuccess={() => router.push("/units")}
-      />
+      {canEdit && (
+        <>
+          <UnitDialog
+            open={editOpen}
+            onOpenChange={setEditOpen}
+            unit={unit}
+            onSuccess={() => window.location.reload()}
+          />
+          <DeleteDialog
+            open={deleteOpen}
+            onOpenChange={setDeleteOpen}
+            title="筐体を削除"
+            description={`${unit.unitName}（${unit.unitId}）を削除します。この操作は取り消せません。`}
+            onConfirm={() => api.deleteUnit(unit.unitId)}
+            onSuccess={() => router.push("/units")}
+          />
+        </>
+      )}
     </div>
   )
 }

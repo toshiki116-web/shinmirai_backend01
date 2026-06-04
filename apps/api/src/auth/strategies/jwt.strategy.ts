@@ -6,7 +6,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 
 interface JwtPayload {
   sub: string;
-  loginId: string;
+  email: string;
+  role: string;
 }
 
 @Injectable()
@@ -29,13 +30,19 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   async validate(payload: JwtPayload) {
     const admin = await this.prisma.admin.findUnique({
       where: { id: payload.sub },
-      select: { id: true, loginId: true, name: true },
+      select: { id: true, loginId: true, email: true, name: true, role: true, isActive: true },
     });
 
-    if (!admin) {
-      throw new UnauthorizedException('管理者が見つかりません');
+    if (!admin || !admin.isActive) {
+      throw new UnauthorizedException('管理ユーザーが見つからないか無効です');
     }
 
-    return admin;
+    return {
+      id: admin.id,
+      loginId: admin.loginId,
+      email: admin.email,
+      name: admin.name,
+      role: admin.role,
+    };
   }
 }

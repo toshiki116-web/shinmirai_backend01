@@ -14,11 +14,14 @@ import { mockUnits, statusLabels, formatDateTime, type Unit } from "@/lib/mock-d
 import { UnitDialog } from "@/components/dialogs/unit-dialog"
 import { DeleteDialog } from "@/components/dialogs/delete-dialog"
 import { api } from "@/lib/api-client"
+import { useAuth } from "@/lib/auth-context"
 
 export default function UnitsPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [editUnit, setEditUnit] = useState<Unit | null>(null)
   const [deleteUnit, setDeleteUnit] = useState<Unit | null>(null)
+  const { admin } = useAuth()
+  const canEdit = admin?.role === "master" || admin?.role === "editor"
 
   function handleRefresh() {
     window.location.reload()
@@ -33,10 +36,12 @@ export default function UnitsPage() {
             全{mockUnits.length}筐体を管理しています
           </p>
         </div>
-        <Button onClick={() => setCreateOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          筐体を追加
-        </Button>
+        {canEdit && (
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            筐体を追加
+          </Button>
+        )}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-4">
@@ -84,7 +89,7 @@ export default function UnitsPage() {
                 <TableHead className="text-center">ステータス</TableHead>
                 <TableHead className="text-center">ライセンス</TableHead>
                 <TableHead>最終通信</TableHead>
-                <TableHead className="w-[80px]" />
+                {canEdit && <TableHead className="w-[80px]" />}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -128,16 +133,18 @@ export default function UnitsPage() {
                   <TableCell className="text-sm text-muted-foreground">
                     {unit.lastSeenAt ? formatDateTime(unit.lastSeenAt) : "-"}
                   </TableCell>
-                  <TableCell>
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setEditUnit(unit)}>
-                        編集
-                      </Button>
-                      <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-destructive hover:text-destructive" onClick={() => setDeleteUnit(unit)}>
-                        削除
-                      </Button>
-                    </div>
-                  </TableCell>
+                  {canEdit && (
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setEditUnit(unit)}>
+                          編集
+                        </Button>
+                        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-destructive hover:text-destructive" onClick={() => setDeleteUnit(unit)}>
+                          削除
+                        </Button>
+                      </div>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>
@@ -145,16 +152,20 @@ export default function UnitsPage() {
         </CardContent>
       </Card>
 
-      <UnitDialog open={createOpen} onOpenChange={setCreateOpen} onSuccess={handleRefresh} />
-      <UnitDialog open={!!editUnit} onOpenChange={(v) => !v && setEditUnit(null)} unit={editUnit} onSuccess={handleRefresh} />
-      <DeleteDialog
-        open={!!deleteUnit}
-        onOpenChange={(v) => !v && setDeleteUnit(null)}
-        title="筐体を削除"
-        description={`${deleteUnit?.unitName}（${deleteUnit?.unitId}）を削除します。この操作は取り消せません。`}
-        onConfirm={() => api.deleteUnit(deleteUnit!.unitId)}
-        onSuccess={handleRefresh}
-      />
+      {canEdit && (
+        <>
+          <UnitDialog open={createOpen} onOpenChange={setCreateOpen} onSuccess={handleRefresh} />
+          <UnitDialog open={!!editUnit} onOpenChange={(v) => !v && setEditUnit(null)} unit={editUnit} onSuccess={handleRefresh} />
+          <DeleteDialog
+            open={!!deleteUnit}
+            onOpenChange={(v) => !v && setDeleteUnit(null)}
+            title="筐体を削除"
+            description={`${deleteUnit?.unitName}（${deleteUnit?.unitId}）を削除します。この操作は取り消せません。`}
+            onConfirm={() => api.deleteUnit(deleteUnit!.unitId)}
+            onSuccess={handleRefresh}
+          />
+        </>
+      )}
     </div>
   )
 }

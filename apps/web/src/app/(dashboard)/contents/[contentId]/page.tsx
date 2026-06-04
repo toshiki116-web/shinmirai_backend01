@@ -11,6 +11,7 @@ import { mockContents, mockSites, statusLabels, formatDate, formatFileSize } fro
 import { ContentDialog } from "@/components/dialogs/content-dialog"
 import { DeleteDialog } from "@/components/dialogs/delete-dialog"
 import { api } from "@/lib/api-client"
+import { useAuth } from "@/lib/auth-context"
 
 export default function ContentDetailPage() {
   const router = useRouter()
@@ -19,6 +20,8 @@ export default function ContentDetailPage() {
   const assignedSites = mockSites.slice(0, content?.assignedSiteCount ?? 0)
   const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const { admin } = useAuth()
+  const canEdit = admin?.role === "master" || admin?.role === "editor"
 
   if (!content) {
     return (
@@ -45,16 +48,18 @@ export default function ContentDetailPage() {
           </div>
           <p className="mt-0.5 font-mono text-sm text-muted-foreground">{content.contentId}</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setEditOpen(true)}>
-            <Pencil className="mr-2 h-4 w-4" />
-            編集
-          </Button>
-          <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
-            <Trash2 className="mr-2 h-4 w-4" />
-            削除
-          </Button>
-        </div>
+        {canEdit && (
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setEditOpen(true)}>
+              <Pencil className="mr-2 h-4 w-4" />
+              編集
+            </Button>
+            <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
+              <Trash2 className="mr-2 h-4 w-4" />
+              削除
+            </Button>
+          </div>
+        )}
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
@@ -130,9 +135,11 @@ export default function ContentDetailPage() {
               <MapPin className="h-4 w-4" />
               配信対象拠点（{content.assignedSiteCount}拠点）
             </CardTitle>
-            <Button variant="outline" size="sm">
-              配信先を編集
-            </Button>
+            {canEdit && (
+              <Button variant="outline" size="sm">
+                配信先を編集
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent>
@@ -163,20 +170,24 @@ export default function ContentDetailPage() {
         </CardContent>
       </Card>
 
-      <ContentDialog
-        open={editOpen}
-        onOpenChange={setEditOpen}
-        content={content}
-        onSuccess={() => window.location.reload()}
-      />
-      <DeleteDialog
-        open={deleteOpen}
-        onOpenChange={setDeleteOpen}
-        title="コンテンツを削除"
-        description={`${content.contentName}（${content.contentId}）を削除します。この操作は取り消せません。`}
-        onConfirm={() => api.deleteContent(content.contentId)}
-        onSuccess={() => router.push("/contents")}
-      />
+      {canEdit && (
+        <>
+          <ContentDialog
+            open={editOpen}
+            onOpenChange={setEditOpen}
+            content={content}
+            onSuccess={() => window.location.reload()}
+          />
+          <DeleteDialog
+            open={deleteOpen}
+            onOpenChange={setDeleteOpen}
+            title="コンテンツを削除"
+            description={`${content.contentName}（${content.contentId}）を削除します。この操作は取り消せません。`}
+            onConfirm={() => api.deleteContent(content.contentId)}
+            onSuccess={() => router.push("/contents")}
+          />
+        </>
+      )}
     </div>
   )
 }

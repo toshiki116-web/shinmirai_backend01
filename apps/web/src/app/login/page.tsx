@@ -14,7 +14,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
-  const [loginId, setLoginId] = useState("")
+  const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
 
   async function handleSubmit(e: FormEvent) {
@@ -26,7 +26,7 @@ export default function LoginPage() {
       const res = await fetch(`${API_BASE}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ loginId, password }),
+        body: JSON.stringify({ email, password }),
       })
 
       const body = await res.json()
@@ -85,20 +85,20 @@ export default function LoginPage() {
 
             <div className="space-y-2">
               <label
-                htmlFor="sinmirai-login-id"
+                htmlFor="sinmirai-email"
                 className="text-xs font-medium uppercase tracking-wider text-[oklch(0.55_0.01_240)]"
               >
-                ログインID
+                メールアドレス
               </label>
               <Input
-                id="sinmirai-login-id"
-                name="sinmirai-login-id"
-                type="text"
+                id="sinmirai-email"
+                name="sinmirai-email"
+                type="email"
                 autoComplete="username"
                 required
-                placeholder="IDを入力"
-                value={loginId}
-                onChange={(e) => setLoginId(e.target.value)}
+                placeholder="mail@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 className="h-11 border-[oklch(0.28_0.03_250)] bg-[oklch(0.1_0.02_250)] text-white placeholder:text-[oklch(0.4_0.01_240)] focus-visible:ring-[oklch(0.6_0.15_180)]"
               />
             </div>

@@ -12,6 +12,20 @@ type ApiError = {
   message: string
 }
 
+export type AdminRole = "master" | "editor" | "viewer"
+
+export type AdminUser = {
+  id: string
+  loginId: string | null
+  email: string
+  name: string
+  role: AdminRole
+  note: string | null
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+}
+
 export class ApiClientError extends Error {
   constructor(
     public status: number,
@@ -80,11 +94,31 @@ async function request<T>(
 
 export const api = {
   // 認証
-  login: (loginId: string, password: string) =>
-    request<{ access_token: string; admin: { id: string; loginId: string; name: string } }>(
+  login: (email: string, password: string) =>
+    request<{ access_token: string; admin: { id: string; loginId: string | null; email: string; name: string; role: AdminRole } }>(
       "/auth/login",
-      { method: "POST", body: JSON.stringify({ loginId, password }) },
+      { method: "POST", body: JSON.stringify({ email, password }) },
     ),
+
+  // ユーザー管理
+  getUsers: (params?: { page?: number; limit?: number; keyword?: string; role?: string; isActive?: boolean }) => {
+    const q = new URLSearchParams()
+    if (params?.page) q.set("page", String(params.page))
+    if (params?.limit) q.set("limit", String(params.limit))
+    if (params?.keyword) q.set("keyword", params.keyword)
+    if (params?.role) q.set("role", params.role)
+    if (params?.isActive !== undefined) q.set("isActive", String(params.isActive))
+    return request<{ items: AdminUser[]; total: number; page: number; limit: number }>(`/admin/users?${q}`)
+  },
+  getUser: (id: string) => request<AdminUser>(`/admin/users/${id}`),
+  createUser: (data: { email: string; name: string; password: string; role: AdminRole; note?: string }) =>
+    request<AdminUser>("/admin/users", { method: "POST", body: JSON.stringify(data) }),
+  updateUser: (id: string, data: Partial<{ email: string; name: string; role: AdminRole; note: string; isActive: boolean }>) =>
+    request<AdminUser>(`/admin/users/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  resetUserPassword: (id: string, password: string) =>
+    request<AdminUser>(`/admin/users/${id}/password`, { method: "PATCH", body: JSON.stringify({ password }) }),
+  deleteUser: (id: string) =>
+    request<AdminUser>(`/admin/users/${id}`, { method: "DELETE" }),
 
   // 拠点
   getSites: (params?: { page?: number; limit?: number; keyword?: string; status?: string }) => {

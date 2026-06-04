@@ -4,6 +4,7 @@ import { SitesService } from './sites.service';
 import { CreateSiteDto } from './dto/create-site.dto';
 import { UpdateSiteDto } from './dto/update-site.dto';
 import { SiteQueryDto } from './dto/site-query.dto';
+import { Roles } from '../../common/decorators/roles.decorator';
 
 @ApiTags('拠点管理')
 @ApiBearerAuth()
@@ -27,6 +28,7 @@ export class SitesController {
   }
 
   @Post()
+  @Roles('master', 'editor')
   @ApiOperation({ summary: '拠点新規登録' })
   @ApiResponse({ status: 201, description: '登録成功' })
   create(@Body() dto: CreateSiteDto) {
@@ -34,6 +36,7 @@ export class SitesController {
   }
 
   @Patch(':siteId')
+  @Roles('master', 'editor')
   @ApiOperation({ summary: '拠点更新' })
   @ApiResponse({ status: 200, description: '更新成功' })
   @ApiResponse({ status: 404, description: '拠点が見つからない' })
@@ -42,6 +45,7 @@ export class SitesController {
   }
 
   @Delete(':siteId')
+  @Roles('master', 'editor')
   @ApiOperation({ summary: '拠点削除（論理削除）' })
   @ApiResponse({ status: 200, description: '削除成功' })
   @ApiResponse({ status: 404, description: '拠点が見つからない' })

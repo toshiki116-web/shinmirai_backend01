@@ -88,3 +88,14 @@ export const LogType = {
   EVENT: 'event',
 } as const;
 export type LogType = (typeof LogType)[keyof typeof LogType];
+
+/** Admin user roles. */
+export const AdminRole = {
+  /** Full access, including user management. */
+  MASTER: 'master',
+  /** CRUD access for sites, units, and contents. */
+  EDITOR: 'editor',
+  /** Read-only access. */
+  VIEWER: 'viewer',
+} as const;
+export type AdminRole = (typeof AdminRole)[keyof typeof AdminRole];

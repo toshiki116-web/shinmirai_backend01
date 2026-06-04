@@ -14,11 +14,14 @@ import { mockContents, statusLabels, formatDate, formatFileSize, type Content } 
 import { ContentDialog } from "@/components/dialogs/content-dialog"
 import { DeleteDialog } from "@/components/dialogs/delete-dialog"
 import { api } from "@/lib/api-client"
+import { useAuth } from "@/lib/auth-context"
 
 export default function ContentsPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [editContent, setEditContent] = useState<Content | null>(null)
   const [deleteContent, setDeleteContent] = useState<Content | null>(null)
+  const { admin } = useAuth()
+  const canEdit = admin?.role === "master" || admin?.role === "editor"
 
   function handleRefresh() {
     window.location.reload()
@@ -33,10 +36,12 @@ export default function ContentsPage() {
             全{mockContents.length}コンテンツを管理しています
           </p>
         </div>
-        <Button onClick={() => setCreateOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          コンテンツを追加
-        </Button>
+        {canEdit && (
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            コンテンツを追加
+          </Button>
+        )}
       </div>
 
       <Card>
@@ -63,7 +68,7 @@ export default function ContentsPage() {
                   </div>
                 </TableHead>
                 <TableHead>登録日</TableHead>
-                <TableHead className="w-[80px]" />
+                {canEdit && <TableHead className="w-[80px]" />}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -104,16 +109,18 @@ export default function ContentsPage() {
                   <TableCell className="text-sm text-muted-foreground">
                     {formatDate(content.createdAt)}
                   </TableCell>
-                  <TableCell>
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setEditContent(content)}>
-                        編集
-                      </Button>
-                      <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-destructive hover:text-destructive" onClick={() => setDeleteContent(content)}>
-                        削除
-                      </Button>
-                    </div>
-                  </TableCell>
+                  {canEdit && (
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setEditContent(content)}>
+                          編集
+                        </Button>
+                        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-destructive hover:text-destructive" onClick={() => setDeleteContent(content)}>
+                          削除
+                        </Button>
+                      </div>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>
@@ -121,16 +128,20 @@ export default function ContentsPage() {
         </CardContent>
       </Card>
 
-      <ContentDialog open={createOpen} onOpenChange={setCreateOpen} onSuccess={handleRefresh} />
-      <ContentDialog open={!!editContent} onOpenChange={(v) => !v && setEditContent(null)} content={editContent} onSuccess={handleRefresh} />
-      <DeleteDialog
-        open={!!deleteContent}
-        onOpenChange={(v) => !v && setDeleteContent(null)}
-        title="コンテンツを削除"
-        description={`${deleteContent?.contentName}（${deleteContent?.contentId}）を削除します。この操作は取り消せません。`}
-        onConfirm={() => api.deleteContent(deleteContent!.contentId)}
-        onSuccess={handleRefresh}
-      />
+      {canEdit && (
+        <>
+          <ContentDialog open={createOpen} onOpenChange={setCreateOpen} onSuccess={handleRefresh} />
+          <ContentDialog open={!!editContent} onOpenChange={(v) => !v && setEditContent(null)} content={editContent} onSuccess={handleRefresh} />
+          <DeleteDialog
+            open={!!deleteContent}
+            onOpenChange={(v) => !v && setDeleteContent(null)}
+            title="コンテンツを削除"
+            description={`${deleteContent?.contentName}（${deleteContent?.contentId}）を削除します。この操作は取り消せません。`}
+            onConfirm={() => api.deleteContent(deleteContent!.contentId)}
+            onSuccess={handleRefresh}
+          />
+        </>
+      )}
     </div>
   )
 }

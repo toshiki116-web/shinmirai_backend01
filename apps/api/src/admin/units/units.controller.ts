@@ -4,6 +4,7 @@ import { UnitsService } from './units.service';
 import { CreateUnitDto } from './dto/create-unit.dto';
 import { UpdateUnitDto } from './dto/update-unit.dto';
 import { UnitQueryDto } from './dto/unit-query.dto';
+import { Roles } from '../../common/decorators/roles.decorator';
 
 @ApiTags('筐体管理')
 @ApiBearerAuth()
@@ -27,6 +28,7 @@ export class UnitsController {
   }
 
   @Post()
+  @Roles('master', 'editor')
   @ApiOperation({ summary: '筐体新規登録', description: 'device_tokenが自動生成され、作成時のレスポンスにのみ含まれる' })
   @ApiResponse({ status: 201, description: '登録成功（device_token含む）' })
   create(@Body() dto: CreateUnitDto) {
@@ -34,6 +36,7 @@ export class UnitsController {
   }
 
   @Patch(':unitId')
+  @Roles('master', 'editor')
   @ApiOperation({ summary: '筐体更新' })
   @ApiResponse({ status: 200, description: '更新成功' })
   @ApiResponse({ status: 404, description: '筐体が見つからない' })
@@ -42,6 +45,7 @@ export class UnitsController {
   }
 
   @Delete(':unitId')
+  @Roles('master', 'editor')
   @ApiOperation({ summary: '筐体削除（論理削除）' })
   @ApiResponse({ status: 200, description: '削除成功' })
   @ApiResponse({ status: 404, description: '筐体が見つからない' })

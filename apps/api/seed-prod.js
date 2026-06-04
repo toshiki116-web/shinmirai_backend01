@@ -4,12 +4,22 @@ const bcrypt = require('bcrypt');
 const prisma = new PrismaClient();
 
 async function main() {
+  const email = (process.env.ADMIN_INITIAL_EMAIL || 'kushida@artifice-inc.com').replace(/[\r\n]+$/, '');
+
   const existing = await prisma.admin.findUnique({
-    where: { loginId: 'sinmirai-admin' },
+    where: { email },
   });
 
   if (existing) {
-    console.log('seed: admin already exists; skipped');
+    await prisma.admin.update({
+      where: { email },
+      data: {
+        loginId: existing.loginId || 'sinmirai-admin',
+        role: 'master',
+        isActive: true,
+      },
+    });
+    console.log('seed: admin already exists; ensured master role');
     return;
   }
 
@@ -25,8 +35,11 @@ async function main() {
   await prisma.admin.create({
     data: {
       loginId: 'sinmirai-admin',
+      email,
       password: hashedPassword,
       name: 'System Administrator',
+      role: 'master',
+      isActive: true,
     },
   });
 

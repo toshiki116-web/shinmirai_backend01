@@ -5,6 +5,7 @@ import { CreateContentDto } from './dto/create-content.dto';
 import { UpdateContentDto } from './dto/update-content.dto';
 import { ContentQueryDto } from './dto/content-query.dto';
 import { AssignSitesDto } from './dto/assign-sites.dto';
+import { Roles } from '../../common/decorators/roles.decorator';
 
 @ApiTags('コンテンツ管理')
 @ApiBearerAuth()
@@ -28,6 +29,7 @@ export class ContentsController {
   }
 
   @Post()
+  @Roles('master', 'editor')
   @ApiOperation({ summary: 'コンテンツ新規登録', description: 'メタデータ登録。動画ファイルは別途uploadエンドポイントで送信' })
   @ApiResponse({ status: 201, description: '登録成功' })
   create(@Body() dto: CreateContentDto) {
@@ -35,6 +37,7 @@ export class ContentsController {
   }
 
   @Patch(':contentId')
+  @Roles('master', 'editor')
   @ApiOperation({ summary: 'コンテンツ更新' })
   @ApiResponse({ status: 200, description: '更新成功' })
   @ApiResponse({ status: 404, description: 'コンテンツが見つからない' })
@@ -43,6 +46,7 @@ export class ContentsController {
   }
 
   @Delete(':contentId')
+  @Roles('master', 'editor')
   @ApiOperation({ summary: 'コンテンツ削除（論理削除）' })
   @ApiResponse({ status: 200, description: '削除成功' })
   @ApiResponse({ status: 404, description: 'コンテンツが見つからない' })
@@ -51,6 +55,7 @@ export class ContentsController {
   }
 
   @Post(':contentId/assign')
+  @Roles('master', 'editor')
   @ApiOperation({ summary: '拠点割り当て', description: '配信対象拠点を一括設定（既存の割り当てを置換）' })
   @ApiResponse({ status: 200, description: '割り当て成功' })
   @ApiResponse({ status: 404, description: 'コンテンツが見つからない' })

@@ -11,7 +11,7 @@ export class AuthController {
 
   @Public()
   @Post('login')
-  @ApiOperation({ summary: '管理者ログイン', description: 'ログインIDとパスワードでJWTトークンを発行' })
+  @ApiOperation({ summary: '管理ユーザーログイン', description: 'メールアドレスとパスワードでJWTトークンを発行' })
   @ApiResponse({ status: 200, description: 'ログイン成功。access_tokenを返却' })
   @ApiResponse({ status: 401, description: '認証失敗' })
   async login(@Body() dto: LoginDto) {

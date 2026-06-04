@@ -1,19 +1,21 @@
 "use client"
 
 import { createContext, useContext, useState, useEffect, useCallback } from "react"
-import { api, setToken, clearToken, isAuthenticated } from "./api-client"
+import { api, setToken, clearToken, isAuthenticated, type AdminRole } from "./api-client"
 
 type Admin = {
   id: string
-  loginId: string
+  loginId: string | null
+  email: string
   name: string
+  role: AdminRole
 }
 
 type AuthContextType = {
   admin: Admin | null
   isLoggedIn: boolean
   isLoading: boolean
-  login: (loginId: string, password: string) => Promise<void>
+  login: (email: string, password: string) => Promise<void>
   logout: () => void
 }
 
@@ -27,7 +29,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const stored = localStorage.getItem("sinmirai_admin")
     if (stored && isAuthenticated()) {
       try {
-        setAdmin(JSON.parse(stored))
+        const parsed = JSON.parse(stored) as Admin
+        if (!parsed.email || !parsed.role) {
+          clearToken()
+          localStorage.removeItem("sinmirai_admin")
+        } else {
+          setAdmin(parsed)
+        }
       } catch {
         clearToken()
       }
@@ -35,8 +43,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(false)
   }, [])
 
-  const login = useCallback(async (loginId: string, password: string) => {
-    const data = await api.login(loginId, password)
+  const login = useCallback(async (email: string, password: string) => {
+    const data = await api.login(email, password)
     setToken(data.access_token)
     setAdmin(data.admin)
     localStorage.setItem("sinmirai_admin", JSON.stringify(data.admin))

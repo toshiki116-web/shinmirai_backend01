@@ -14,11 +14,14 @@ import { mockSites, statusLabels, formatDate, type Site } from "@/lib/mock-data"
 import { SiteDialog } from "@/components/dialogs/site-dialog"
 import { DeleteDialog } from "@/components/dialogs/delete-dialog"
 import { api } from "@/lib/api-client"
+import { useAuth } from "@/lib/auth-context"
 
 export default function SitesPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [editSite, setEditSite] = useState<Site | null>(null)
   const [deleteSite, setDeleteSite] = useState<Site | null>(null)
+  const { admin } = useAuth()
+  const canEdit = admin?.role === "master" || admin?.role === "editor"
 
   function handleRefresh() {
     // TODO(2026-06-01): API連携後はデータ再取得に置き換え
@@ -34,10 +37,12 @@ export default function SitesPage() {
             全{mockSites.length}拠点を管理しています
           </p>
         </div>
-        <Button onClick={() => setCreateOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          拠点を追加
-        </Button>
+        {canEdit && (
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            拠点を追加
+          </Button>
+        )}
       </div>
 
       <Card>
@@ -59,7 +64,7 @@ export default function SitesPage() {
                 <TableHead className="text-center">筐体数</TableHead>
                 <TableHead className="text-center">ステータス</TableHead>
                 <TableHead>登録日</TableHead>
-                <TableHead className="w-[80px]" />
+                {canEdit && <TableHead className="w-[80px]" />}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -93,26 +98,28 @@ export default function SitesPage() {
                     <TableCell className="text-sm text-muted-foreground">
                       {formatDate(site.createdAt)}
                     </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 px-2 text-xs"
-                          onClick={() => setEditSite(site)}
-                        >
-                          編集
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 px-2 text-xs text-destructive hover:text-destructive"
-                          onClick={() => setDeleteSite(site)}
-                        >
-                          削除
-                        </Button>
-                      </div>
-                    </TableCell>
+                    {canEdit && (
+                      <TableCell>
+                        <div className="flex gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-xs"
+                            onClick={() => setEditSite(site)}
+                          >
+                            編集
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+                            onClick={() => setDeleteSite(site)}
+                          >
+                            削除
+                          </Button>
+                        </div>
+                      </TableCell>
+                    )}
                   </TableRow>
                 )
               })}
@@ -121,16 +128,20 @@ export default function SitesPage() {
         </CardContent>
       </Card>
 
-      <SiteDialog open={createOpen} onOpenChange={setCreateOpen} onSuccess={handleRefresh} />
-      <SiteDialog open={!!editSite} onOpenChange={(v) => !v && setEditSite(null)} site={editSite} onSuccess={handleRefresh} />
-      <DeleteDialog
-        open={!!deleteSite}
-        onOpenChange={(v) => !v && setDeleteSite(null)}
-        title="拠点を削除"
-        description={`${deleteSite?.siteName}（${deleteSite?.siteId}）を削除します。この操作は取り消せません。`}
-        onConfirm={() => api.deleteSite(deleteSite!.siteId)}
-        onSuccess={handleRefresh}
-      />
+      {canEdit && (
+        <>
+          <SiteDialog open={createOpen} onOpenChange={setCreateOpen} onSuccess={handleRefresh} />
+          <SiteDialog open={!!editSite} onOpenChange={(v) => !v && setEditSite(null)} site={editSite} onSuccess={handleRefresh} />
+          <DeleteDialog
+            open={!!deleteSite}
+            onOpenChange={(v) => !v && setDeleteSite(null)}
+            title="拠点を削除"
+            description={`${deleteSite?.siteName}（${deleteSite?.siteId}）を削除します。この操作は取り消せません。`}
+            onConfirm={() => api.deleteSite(deleteSite!.siteId)}
+            onSuccess={handleRefresh}
+          />
+        </>
+      )}
     </div>
   )
 }

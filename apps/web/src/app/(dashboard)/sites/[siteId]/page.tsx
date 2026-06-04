@@ -19,6 +19,7 @@ import { mockSites, mockUnits, statusLabels, formatDate, formatDateTime } from "
 import { SiteDialog } from "@/components/dialogs/site-dialog"
 import { DeleteDialog } from "@/components/dialogs/delete-dialog"
 import { api } from "@/lib/api-client"
+import { useAuth } from "@/lib/auth-context"
 
 export default function SiteDetailPage() {
   const router = useRouter()
@@ -27,6 +28,8 @@ export default function SiteDetailPage() {
   const units = mockUnits.filter((u) => u.siteId === siteId)
   const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const { admin } = useAuth()
+  const canEdit = admin?.role === "master" || admin?.role === "editor"
 
   if (!site) {
     return (
@@ -55,16 +58,18 @@ export default function SiteDetailPage() {
           </div>
           <p className="mt-0.5 font-mono text-sm text-muted-foreground">{site.siteId}</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setEditOpen(true)}>
-            <Pencil className="mr-2 h-4 w-4" />
-            編集
-          </Button>
-          <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
-            <Trash2 className="mr-2 h-4 w-4" />
-            削除
-          </Button>
-        </div>
+        {canEdit && (
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setEditOpen(true)}>
+              <Pencil className="mr-2 h-4 w-4" />
+              編集
+            </Button>
+            <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
+              <Trash2 className="mr-2 h-4 w-4" />
+              削除
+            </Button>
+          </div>
+        )}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -178,20 +183,24 @@ export default function SiteDetailPage() {
         </CardContent>
       </Card>
 
-      <SiteDialog
-        open={editOpen}
-        onOpenChange={setEditOpen}
-        site={site}
-        onSuccess={() => window.location.reload()}
-      />
-      <DeleteDialog
-        open={deleteOpen}
-        onOpenChange={setDeleteOpen}
-        title="拠点を削除"
-        description={`${site.siteName}（${site.siteId}）を削除します。この操作は取り消せません。`}
-        onConfirm={() => api.deleteSite(site.siteId)}
-        onSuccess={() => router.push("/sites")}
-      />
+      {canEdit && (
+        <>
+          <SiteDialog
+            open={editOpen}
+            onOpenChange={setEditOpen}
+            site={site}
+            onSuccess={() => window.location.reload()}
+          />
+          <DeleteDialog
+            open={deleteOpen}
+            onOpenChange={setDeleteOpen}
+            title="拠点を削除"
+            description={`${site.siteName}（${site.siteId}）を削除します。この操作は取り消せません。`}
+            onConfirm={() => api.deleteSite(site.siteId)}
+            onSuccess={() => router.push("/sites")}
+          />
+        </>
+      )}
     </div>
   )
 }

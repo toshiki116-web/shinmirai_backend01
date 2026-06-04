@@ -24,6 +24,7 @@ import {
   BarChart3,
   Droplets,
   LogOut,
+  Users,
 } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
 
@@ -42,7 +43,8 @@ const navMonitor = [
 
 export function AppSidebar() {
   const pathname = usePathname()
-  const { logout } = useAuth()
+  const { admin, logout } = useAuth()
+  const canManageUsers = admin?.role === "master"
 
   return (
     <Sidebar>
@@ -80,6 +82,17 @@ export function AppSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
+              {canManageUsers && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    render={<Link href="/users" />}
+                    isActive={pathname === "/users"}
+                  >
+                    <Users className="h-4 w-4" />
+                    <span>ユーザー管理</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

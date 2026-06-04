@@ -15,29 +15,31 @@ export class AuthService {
 
   async login(dto: LoginDto) {
     const admin = await this.prisma.admin.findUnique({
-      where: { loginId: dto.loginId },
+      where: { email: dto.email },
     });
 
-    if (!admin) {
-      throw new UnauthorizedException('ログインIDまたはパスワードが正しくありません');
+    if (!admin || !admin.isActive) {
+      throw new UnauthorizedException('メールアドレスまたはパスワードが正しくありません');
     }
 
     const isPasswordValid = await bcrypt.compare(dto.password, admin.password);
     if (!isPasswordValid) {
-      throw new UnauthorizedException('ログインIDまたはパスワードが正しくありません');
+      throw new UnauthorizedException('メールアドレスまたはパスワードが正しくありません');
     }
 
-    const payload = { sub: admin.id, loginId: admin.loginId };
+    const payload = { sub: admin.id, email: admin.email, role: admin.role };
     const accessToken = this.jwtService.sign(payload);
 
-    this.logger.log(`管理者ログイン成功: ${admin.loginId}`);
+    this.logger.log(`管理ユーザーログイン成功: ${admin.email}`);
 
     return {
       access_token: accessToken,
       admin: {
         id: admin.id,
         loginId: admin.loginId,
+        email: admin.email,
         name: admin.name,
+        role: admin.role,
       },
     };
   }

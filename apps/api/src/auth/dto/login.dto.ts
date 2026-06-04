@@ -1,11 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsString } from 'class-validator';
 
 export class LoginDto {
-  @ApiProperty({ description: 'ログインID', example: 'admin' })
-  @IsString()
-  @IsNotEmpty({ message: 'ログインIDは必須です' })
-  loginId!: string;
+  @ApiProperty({ description: 'メールアドレス', example: 'kushida@artifice-inc.com' })
+  @IsEmail({}, { message: 'メールアドレスの形式が正しくありません' })
+  @IsNotEmpty({ message: 'メールアドレスは必須です' })
+  email!: string;
 
   @ApiProperty({ description: 'パスワード', example: 'changeme' })
   @IsString()
