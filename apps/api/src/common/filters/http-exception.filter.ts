@@ -41,7 +41,8 @@ export class GlobalHttpExceptionFilter implements ExceptionFilter {
         }
       }
     } else if (exception instanceof Error) {
-      message = exception.message;
+      // 想定外の内部例外は詳細をクライアントに返さない（内部構成の漏洩防止）。
+      // 詳細はサーバーログにのみ記録する。
       this.logger.error(`予期しないエラー: ${exception.message}`, exception.stack);
     }
 
