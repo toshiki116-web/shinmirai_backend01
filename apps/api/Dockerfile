@@ -10,6 +10,8 @@ RUN pnpm install --frozen-lockfile || pnpm install
 
 WORKDIR /app/apps/api
 RUN npx prisma generate
+# @sinmirai/shared を先にビルドして dist を生成（API実行時の require 解決に必須）
+RUN pnpm --filter @sinmirai/shared build
 RUN pnpm build
 
 FROM node:22-alpine AS runner
