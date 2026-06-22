@@ -93,6 +93,9 @@ model Content {
   checksum       String?
   mimeType       String?  @map("mime_type")
   uploadStatus   String   @default("none") @map("upload_status")
+  thumbnailPath     String? @map("thumbnail_path")
+  thumbnailMimeType String? @map("thumbnail_mime_type")
+  thumbnailStatus   String  @default("none") @map("thumbnail_status")
   version        Int      @default(1)
   isActive       Boolean  @default(true) @map("is_active")
   createdAt      DateTime @default(now()) @map("created_at")

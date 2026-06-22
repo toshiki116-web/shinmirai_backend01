@@ -258,6 +258,15 @@ export const api = {
     ),
   completeContentUpload: (contentId: string, data: { objectKey: string; checksum?: string }) =>
     request<any>(`/admin/contents/${contentId}/upload-complete`, { method: "POST", body: JSON.stringify(data) }),
+  createThumbnailUploadUrl: (contentId: string, data: { fileName: string; contentType: string; fileSize: number }) =>
+    request<{ uploadUrl: string; objectKey: string; expiresIn: number }>(
+      `/admin/contents/${contentId}/thumbnail-url`,
+      { method: "POST", body: JSON.stringify(data) },
+    ),
+  completeThumbnailUpload: (contentId: string, data: { objectKey: string; checksum?: string }) =>
+    request<any>(`/admin/contents/${contentId}/thumbnail-complete`, { method: "POST", body: JSON.stringify(data) }),
+  deleteThumbnail: (contentId: string) =>
+    request<any>(`/admin/contents/${contentId}/thumbnail`, { method: "DELETE" }),
   deleteContent: (contentId: string) =>
     request<any>(`/admin/contents/${contentId}`, { method: "DELETE" }),
   assignSites: (contentId: string, siteIds: string[]) =>

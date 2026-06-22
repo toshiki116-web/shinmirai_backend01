@@ -37,6 +37,10 @@ export type Content = {
   checksum: string | null
   mimeType: string | null
   uploadStatus: "none" | "uploading" | "ready" | "failed"
+  thumbnailPath?: string | null
+  thumbnailMimeType?: string | null
+  thumbnailStatus?: "none" | "uploading" | "ready" | "failed"
+  thumbnailUrl?: string | null
   version: number
   isActive: boolean
   createdAt: string

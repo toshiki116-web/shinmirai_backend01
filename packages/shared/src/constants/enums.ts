@@ -61,6 +61,20 @@ export const ContentUploadStatus = {
 } as const;
 export type ContentUploadStatus = (typeof ContentUploadStatus)[keyof typeof ContentUploadStatus];
 
+/** サムネイルのアップロード状態 */
+export const ContentThumbnailStatus = {
+  /** 未設定 */
+  NONE: 'none',
+  /** アップロード中 */
+  UPLOADING: 'uploading',
+  /** 表示可能 */
+  READY: 'ready',
+  /** アップロード失敗 */
+  FAILED: 'failed',
+} as const;
+export type ContentThumbnailStatus =
+  (typeof ContentThumbnailStatus)[keyof typeof ContentThumbnailStatus];
+
 /** コンテンツの配信区分 */
 export const DeliveryType = {
   /** 一般配信 */

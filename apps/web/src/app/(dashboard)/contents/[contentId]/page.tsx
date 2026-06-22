@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { ArrowLeft, Pencil, Trash2, Film, MapPin, HardDrive, Hash, Upload } from "lucide-react"
+import { ArrowLeft, Pencil, Trash2, Film, MapPin, HardDrive, Hash, Upload, ImageIcon, X } from "lucide-react"
 import { statusLabels, formatDate, formatFileSize, type Content } from "@/lib/mock-data"
 import { ContentDialog } from "@/components/dialogs/content-dialog"
 import { DeleteDialog } from "@/components/dialogs/delete-dialog"
@@ -32,6 +32,8 @@ export default function ContentDetailPage() {
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const [uploadError, setUploadError] = useState("")
+  const [thumbnailProgress, setThumbnailProgress] = useState<number | null>(null)
+  const [thumbnailError, setThumbnailError] = useState("")
   const { admin } = useAuth()
   const canEdit = admin?.role === "master" || admin?.role === "editor"
 
@@ -53,14 +55,14 @@ export default function ContentDetailPage() {
     void fetchContent()
   }, [fetchContent])
 
-  async function uploadToSignedUrl(uploadUrl: string, file: File) {
+  async function uploadToSignedUrl(uploadUrl: string, file: File, onProgress: (progress: number) => void) {
     return new Promise<string | undefined>((resolve, reject) => {
       const xhr = new XMLHttpRequest()
       xhr.open("PUT", uploadUrl)
       xhr.setRequestHeader("Content-Type", file.type)
       xhr.upload.onprogress = (event) => {
         if (event.lengthComputable) {
-          setUploadProgress(Math.round((event.loaded / event.total) * 100))
+          onProgress(Math.round((event.loaded / event.total) * 100))
         }
       }
       xhr.onload = () => {
@@ -75,24 +77,124 @@ export default function ContentDetailPage() {
     })
   }
 
+  async function createThumbnailFromVideo(file: File): Promise<File | null> {
+    if (typeof document === "undefined") return null
+
+    const objectUrl = URL.createObjectURL(file)
+    try {
+      const video = document.createElement("video")
+      video.preload = "metadata"
+      video.muted = true
+      video.playsInline = true
+
+      await new Promise<void>((resolve, reject) => {
+        video.onloadedmetadata = () => resolve()
+        video.onerror = () => reject(new Error("動画からサムネイルを生成できません"))
+        video.src = objectUrl
+      })
+
+      const seekTime = Number.isFinite(video.duration) && video.duration > 1 ? 1 : 0
+      await new Promise<void>((resolve, reject) => {
+        const eventName = seekTime > 0 ? "seeked" : "loadeddata"
+        const cleanup = () => {
+          video.removeEventListener(eventName, onReady)
+          video.removeEventListener("error", onError)
+        }
+        const onReady = () => {
+          cleanup()
+          resolve()
+        }
+        const onError = () => {
+          cleanup()
+          reject(new Error("動画からサムネイルを生成できません"))
+        }
+        video.addEventListener(eventName, onReady)
+        video.addEventListener("error", onError)
+        if (seekTime > 0) {
+          video.currentTime = seekTime
+        }
+      })
+
+      const canvas = document.createElement("canvas")
+      canvas.width = video.videoWidth || 1280
+      canvas.height = video.videoHeight || 720
+      const context = canvas.getContext("2d")
+      if (!context) return null
+      context.drawImage(video, 0, 0, canvas.width, canvas.height)
+
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.86))
+      if (!blob) return null
+
+      return new File([blob], `${file.name.replace(/\.[^.]+$/, "") || "thumbnail"}.jpg`, {
+        type: "image/jpeg",
+      })
+    } finally {
+      URL.revokeObjectURL(objectUrl)
+    }
+  }
+
+  async function uploadThumbnail(file: File) {
+    setThumbnailError("")
+    setThumbnailProgress(0)
+    const { uploadUrl, objectKey } = await api.createThumbnailUploadUrl(contentId, {
+      fileName: file.name,
+      contentType: file.type,
+      fileSize: file.size,
+    })
+    const checksum = await uploadToSignedUrl(uploadUrl, file, setThumbnailProgress)
+    await api.completeThumbnailUpload(contentId, { objectKey, checksum })
+    setThumbnailProgress(null)
+  }
+
   async function handleUpload(file: File | undefined) {
     if (!file) return
     setUploadError("")
+    setThumbnailError("")
     setUploadProgress(0)
     try {
+      const generatedThumbnail = await createThumbnailFromVideo(file).catch((err) => {
+        setThumbnailError(err instanceof Error ? err.message : "動画からサムネイルを生成できません")
+        return null
+      })
       const { uploadUrl, objectKey } = await api.createContentUploadUrl(contentId, {
         fileName: file.name,
         contentType: file.type,
         fileSize: file.size,
       })
-      const checksum = await uploadToSignedUrl(uploadUrl, file)
+      const checksum = await uploadToSignedUrl(uploadUrl, file, setUploadProgress)
       await api.completeContentUpload(contentId, { objectKey, checksum })
+      if (generatedThumbnail) {
+        await uploadThumbnail(generatedThumbnail)
+      }
       setUploadProgress(null)
       await fetchContent()
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "アップロードに失敗しました")
       setUploadProgress(null)
+      setThumbnailProgress(null)
       await fetchContent()
+    }
+  }
+
+  async function handleThumbnailUpload(file: File | undefined) {
+    if (!file) return
+    try {
+      await uploadThumbnail(file)
+      await fetchContent()
+    } catch (err) {
+      setThumbnailError(err instanceof Error ? err.message : "サムネイルのアップロードに失敗しました")
+      setThumbnailProgress(null)
+      await fetchContent()
+    }
+  }
+
+  async function handleThumbnailDelete() {
+    setThumbnailError("")
+    try {
+      await api.deleteThumbnail(contentId)
+      await fetchContent()
+    } catch (err) {
+      setThumbnailError(err instanceof Error ? err.message : "サムネイルの削除に失敗しました")
     }
   }
 
@@ -189,20 +291,57 @@ export default function ContentDetailPage() {
               <span>{formatFileSize(content.fileSize)}</span>
               <span className="text-muted-foreground">チェックサム</span>
               <span className="font-mono text-xs">{content.checksum ?? "-"}</span>
+              <span className="text-muted-foreground">サムネイル</span>
+              <Badge variant={statusLabels[content.thumbnailStatus ?? "none"]?.variant ?? "secondary"} className="w-fit">
+                {statusLabels[content.thumbnailStatus ?? "none"]?.label ?? content.thumbnailStatus ?? "none"}
+              </Badge>
+            </div>
+            <div className="overflow-hidden rounded-md border bg-muted/30">
+              {content.thumbnailUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={content.thumbnailUrl} alt="" className="aspect-video w-full object-cover" />
+              ) : (
+                <div className="flex aspect-video items-center justify-center text-muted-foreground">
+                  <ImageIcon className="h-8 w-8" />
+                </div>
+              )}
             </div>
             {canEdit && (
               <div className="space-y-2 border-t pt-3">
-                <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors hover:bg-accent">
-                  <Upload className="h-4 w-4" />
-                  動画ファイルをアップロード
-                  <input
-                    type="file"
-                    accept="video/mp4,video/quicktime"
-                    className="hidden"
-                    disabled={uploadProgress !== null}
-                    onChange={(e) => { void handleUpload(e.target.files?.[0]); e.currentTarget.value = "" }}
-                  />
-                </label>
+                <div className="flex flex-wrap gap-2">
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors hover:bg-accent">
+                    <Upload className="h-4 w-4" />
+                    動画ファイルをアップロード
+                    <input
+                      type="file"
+                      accept="video/mp4,video/quicktime"
+                      className="hidden"
+                      disabled={uploadProgress !== null || thumbnailProgress !== null}
+                      onChange={(e) => { void handleUpload(e.target.files?.[0]); e.currentTarget.value = "" }}
+                    />
+                  </label>
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors hover:bg-accent">
+                    <ImageIcon className="h-4 w-4" />
+                    画像を選択
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      disabled={thumbnailProgress !== null}
+                      onChange={(e) => { void handleThumbnailUpload(e.target.files?.[0]); e.currentTarget.value = "" }}
+                    />
+                  </label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={thumbnailProgress !== null || (content.thumbnailStatus ?? "none") === "none"}
+                    onClick={() => { void handleThumbnailDelete() }}
+                  >
+                    <X className="mr-2 h-4 w-4" />
+                    サムネイル削除
+                  </Button>
+                </div>
                 {uploadProgress !== null && (
                   <div className="space-y-1">
                     <div className="h-2 overflow-hidden rounded-full bg-muted">
@@ -211,7 +350,16 @@ export default function ContentDetailPage() {
                     <p className="text-xs text-muted-foreground">{uploadProgress}%</p>
                   </div>
                 )}
+                {thumbnailProgress !== null && (
+                  <div className="space-y-1">
+                    <div className="h-2 overflow-hidden rounded-full bg-muted">
+                      <div className="h-full bg-primary" style={{ width: `${thumbnailProgress}%` }} />
+                    </div>
+                    <p className="text-xs text-muted-foreground">サムネイル {thumbnailProgress}%</p>
+                  </div>
+                )}
                 {uploadError && <p className="text-xs text-destructive">{uploadError}</p>}
+                {thumbnailError && <p className="text-xs text-destructive">{thumbnailError}</p>}
               </div>
             )}
           </CardContent>

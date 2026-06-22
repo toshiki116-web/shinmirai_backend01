@@ -30,7 +30,9 @@ export class StorageService {
   private readonly bucket: string;
   private readonly uploadUrlExpiresIn: number;
   private readonly maxUploadSizeBytes: number;
+  private readonly maxThumbnailSizeBytes: number;
   private readonly allowedVideoMime: Set<string>;
+  private readonly allowedImageMime: Set<string>;
   private readonly cloudFrontDomain: string | null;
   private readonly cloudFrontKeyPairId: string | null;
   private readonly cloudFrontPrivateKey: string | null;
@@ -47,8 +49,17 @@ export class StorageService {
     this.maxUploadSizeBytes = Number(
       configService.get<string>('MAX_UPLOAD_SIZE_BYTES') ?? 5 * 1024 * 1024 * 1024,
     );
+    this.maxThumbnailSizeBytes = Number(
+      configService.get<string>('MAX_THUMBNAIL_SIZE_BYTES') ?? 5 * 1024 * 1024,
+    );
     this.allowedVideoMime = new Set(
       (configService.get<string>('ALLOWED_VIDEO_MIME') ?? 'video/mp4,video/quicktime')
+        .split(',')
+        .map((mime) => mime.trim())
+        .filter(Boolean),
+    );
+    this.allowedImageMime = new Set(
+      (configService.get<string>('ALLOWED_THUMBNAIL_MIME') ?? 'image/jpeg,image/png,image/webp')
         .split(',')
         .map((mime) => mime.trim())
         .filter(Boolean),
@@ -74,6 +85,27 @@ export class StorageService {
     this.validateUpload(params.contentType, params.fileSize);
 
     const objectKey = this.createObjectKey(params.contentId, params.fileName, params.contentType);
+    const command = new PutObjectCommand({
+      Bucket: this.bucket,
+      Key: objectKey,
+      ContentType: params.contentType,
+    });
+    const uploadUrl = await getS3SignedUrl(this.s3, command, {
+      expiresIn: this.uploadUrlExpiresIn,
+    });
+
+    return {
+      uploadUrl,
+      objectKey,
+      expiresIn: this.uploadUrlExpiresIn,
+    };
+  }
+
+  async createThumbnailUploadUrl(params: CreateUploadUrlParams): Promise<UploadUrlResult> {
+    this.ensureBucketConfigured();
+    this.validateImageUpload(params.contentType, params.fileSize);
+
+    const objectKey = this.createThumbnailObjectKey(params.contentId, params.contentType);
     const command = new PutObjectCommand({
       Bucket: this.bucket,
       Key: objectKey,
@@ -140,6 +172,23 @@ export class StorageService {
     }
   }
 
+  validateImageUpload(contentType: string, fileSize: number) {
+    const normalizedContentType = this.normalizeImageContentType(contentType);
+    if (!this.allowedImageMime.has(normalizedContentType)) {
+      throw new BadRequestException('許可されていない画像形式です');
+    }
+    if (!Number.isFinite(fileSize) || fileSize <= 0) {
+      throw new BadRequestException('ファイルサイズが不正です');
+    }
+    if (fileSize > this.maxThumbnailSizeBytes) {
+      throw new BadRequestException('サムネイルの最大サイズを超えています');
+    }
+  }
+
+  normalizeImageContentType(contentType: string) {
+    return contentType.split(';')[0]?.trim().toLowerCase() ?? '';
+  }
+
   private ensureBucketConfigured() {
     if (!this.bucket) {
       throw new InternalServerErrorException('S3バケット設定が不足しています');
@@ -149,6 +198,24 @@ export class StorageService {
   private createObjectKey(contentId: string, fileName: string, contentType: string) {
     const ext = this.getExtension(fileName, contentType);
     return `contents/${contentId}/${randomUUID()}.${ext}`;
+  }
+
+  private createThumbnailObjectKey(contentId: string, contentType: string) {
+    const ext = this.imageExtFromMime(contentType);
+    return `contents/${contentId}/thumbnails/${randomUUID()}.${ext}`;
+  }
+
+  imageExtFromMime(contentType: string) {
+    switch (this.normalizeImageContentType(contentType)) {
+      case 'image/png':
+        return 'png';
+      case 'image/webp':
+        return 'webp';
+      case 'image/jpeg':
+        return 'jpg';
+      default:
+        throw new BadRequestException('許可されていない画像形式です');
+    }
   }
 
   private getExtension(fileName: string, contentType: string) {

@@ -1,19 +1,16 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Content, Prisma } from '@prisma/client';
+import { ContentThumbnailStatus, ContentUploadStatus } from '@sinmirai/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../../storage/storage.service';
 import { AssignSitesDto } from './dto/assign-sites.dto';
 import { CompleteUploadDto } from './dto/complete-upload.dto';
+import { CompleteThumbnailUploadDto } from './dto/complete-thumbnail-upload.dto';
 import { ContentQueryDto } from './dto/content-query.dto';
 import { CreateContentDto } from './dto/create-content.dto';
+import { CreateThumbnailUrlDto } from './dto/create-thumbnail-url.dto';
 import { CreateUploadUrlDto } from './dto/create-upload-url.dto';
 import { UpdateContentDto } from './dto/update-content.dto';
-
-const ContentUploadStatus = {
-  UPLOADING: 'uploading',
-  READY: 'ready',
-  FAILED: 'failed',
-} as const;
 
 @Injectable()
 export class ContentsService {
@@ -90,6 +87,10 @@ export class ContentsService {
 
     return {
       ...this.serializeContent(content),
+      thumbnailUrl:
+        content.thumbnailPath && content.thumbnailStatus === ContentThumbnailStatus.READY
+          ? this.storageService.signContentUrl(content.thumbnailPath)
+          : null,
       assignedSites: content.contentSiteAssignments.map((a) => a.site),
       contentSiteAssignments: undefined,
     };
@@ -235,6 +236,81 @@ export class ContentsService {
       }
       throw new BadRequestException('アップロード済みファイルを確認できません');
     }
+  }
+
+  async createThumbnailUploadUrl(contentId: string, dto: CreateThumbnailUrlDto) {
+    await this.ensureExists(contentId);
+    const result = await this.storageService.createThumbnailUploadUrl({
+      contentId,
+      fileName: dto.fileName,
+      contentType: dto.contentType,
+      fileSize: dto.fileSize,
+    });
+
+    await this.prisma.content.update({
+      where: { contentId },
+      data: {
+        thumbnailPath: result.objectKey,
+        thumbnailMimeType: this.storageService.normalizeImageContentType(dto.contentType),
+        thumbnailStatus: ContentThumbnailStatus.UPLOADING,
+      },
+    });
+
+    return result;
+  }
+
+  async completeThumbnailUpload(contentId: string, dto: CompleteThumbnailUploadDto) {
+    const content = await this.ensureExists(contentId);
+
+    const expectedPrefix = `contents/${contentId}/thumbnails/`;
+    if (!dto.objectKey.startsWith(expectedPrefix)) {
+      throw new BadRequestException('サムネイルのファイルキーが不正です');
+    }
+    if (content.thumbnailPath && content.thumbnailPath !== dto.objectKey) {
+      throw new BadRequestException('サムネイルのファイルキーが一致しません');
+    }
+
+    try {
+      const head = await this.storageService.headObject(dto.objectKey);
+      if (!head.contentType) {
+        throw new BadRequestException('サムネイルのContent-Typeを確認できません');
+      }
+      const contentType = this.storageService.normalizeImageContentType(head.contentType);
+      this.storageService.validateImageUpload(contentType, Number(head.fileSize));
+
+      const updated = await this.prisma.content.update({
+        where: { contentId },
+        data: {
+          thumbnailPath: dto.objectKey,
+          thumbnailMimeType: contentType,
+          thumbnailStatus: ContentThumbnailStatus.READY,
+        },
+      });
+      return this.serializeContent(updated);
+    } catch (err) {
+      await this.prisma.content.update({
+        where: { contentId },
+        data: { thumbnailStatus: ContentThumbnailStatus.FAILED },
+      });
+      if (err instanceof BadRequestException) {
+        throw err;
+      }
+      throw new BadRequestException('アップロード済みサムネイルを確認できません');
+    }
+  }
+
+  async removeThumbnail(contentId: string) {
+    await this.ensureExists(contentId);
+
+    const content = await this.prisma.content.update({
+      where: { contentId },
+      data: {
+        thumbnailPath: null,
+        thumbnailMimeType: null,
+        thumbnailStatus: ContentThumbnailStatus.NONE,
+      },
+    });
+    return this.serializeContent(content);
   }
 
   async updateFileMetadata(

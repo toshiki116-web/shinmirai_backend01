@@ -6,6 +6,8 @@ import { UpdateContentDto } from './dto/update-content.dto';
 import { ContentQueryDto } from './dto/content-query.dto';
 import { AssignSitesDto } from './dto/assign-sites.dto';
 import { CompleteUploadDto } from './dto/complete-upload.dto';
+import { CompleteThumbnailUploadDto } from './dto/complete-thumbnail-upload.dto';
+import { CreateThumbnailUrlDto } from './dto/create-thumbnail-url.dto';
 import { CreateUploadUrlDto } from './dto/create-upload-url.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 
@@ -55,6 +57,40 @@ export class ContentsController {
   @ApiResponse({ status: 404, description: 'コンテンツが見つからない' })
   completeUpload(@Param('contentId') contentId: string, @Body() dto: CompleteUploadDto) {
     return this.contentsService.completeUpload(contentId, dto);
+  }
+
+  @Post(':contentId/thumbnail-url')
+  @Roles('master', 'editor')
+  @ApiOperation({ summary: 'サムネイルアップロードURL発行', description: 'S3直PUT用の署名付きURLを発行する' })
+  @ApiResponse({ status: 201, description: '署名付きURL発行成功' })
+  @ApiResponse({ status: 404, description: 'コンテンツが見つからない' })
+  createThumbnailUploadUrl(
+    @Param('contentId') contentId: string,
+    @Body() dto: CreateThumbnailUrlDto,
+  ) {
+    return this.contentsService.createThumbnailUploadUrl(contentId, dto);
+  }
+
+  @Post(':contentId/thumbnail-complete')
+  @Roles('master', 'editor')
+  @ApiOperation({ summary: 'サムネイルアップロード完了', description: 'S3の実体確認後、サムネイル情報を確定する' })
+  @ApiResponse({ status: 201, description: 'サムネイルアップロード完了処理成功' })
+  @ApiResponse({ status: 400, description: 'アップロード済みサムネイルを確認できない' })
+  @ApiResponse({ status: 404, description: 'コンテンツが見つからない' })
+  completeThumbnailUpload(
+    @Param('contentId') contentId: string,
+    @Body() dto: CompleteThumbnailUploadDto,
+  ) {
+    return this.contentsService.completeThumbnailUpload(contentId, dto);
+  }
+
+  @Delete(':contentId/thumbnail')
+  @Roles('master', 'editor')
+  @ApiOperation({ summary: 'サムネイル削除', description: 'サムネイル設定を未設定に戻す' })
+  @ApiResponse({ status: 200, description: 'サムネイル削除成功' })
+  @ApiResponse({ status: 404, description: 'コンテンツが見つからない' })
+  removeThumbnail(@Param('contentId') contentId: string) {
+    return this.contentsService.removeThumbnail(contentId);
   }
 
   @Patch(':contentId')
