@@ -8,7 +8,8 @@
 
 ## 2. 現在地（正常基準）
 - **本番＝大阪 ap-northeast-3**（アカウント 741448957802）。東京 ap-northeast-1 は**完全削除済み・課金停止**。
-- 本番URL: **`https://fhwm.jp`**（HTTPS化済み）。ヘルス: `/api/health` → 200（DB up）、ECS `sinmirai-api`(=`:5`)/`sinmirai-web`(=`:1`) ともに running=1。
+- 本番URL: **`https://fhwm.jp`**（HTTPS化済み）。ヘルス: `/api/health` → 200（DB up）、ECS `sinmirai-api`(=**`:6`** ＝CloudFront/S3 env・`CLOUDFRONT_PRIVATE_KEY` secret 入り)/`sinmirai-web`(=`:1`) ともに running=1。
+  - ⚠️ **デプロイ時はタスク定義リビジョンをハードコードしない**。必ず稼働中リビジョンを確認してから `--task-definition` を指定する（下記「落とし穴」参照）。
 - **管理ログインはメール**: `kushida@artifice-inc.com`（マスター）。loginIdログインは廃止（400）。PWは Secret `sinmirai/prod/admin-initial-password` の現行値。
 - ユーザー管理画面: `https://fhwm.jp/users`（masterのみ）。
 - 構成・接続情報・SecretsのARN・管理者情報は **メモリ `prod-env-osaka.md` / `user-management-feature.md` に集約**。
@@ -54,6 +55,7 @@
 - **web Docker build**: `.dockerignore` で nested `.next`/`dist`/`*.tsbuildinfo`/`.codex-*` を除外済み（混入するとbuild不安定）。
 - **検証環境の癖（bash側）**: 既定 `python3` はWindowsスタブで機能しない（`--version`が「Python」のみ）。`node` も非常に古く `let`/アロー不可。JSON生成は `node -e` のオブジェクトリテラル、抽出は `sed`/`grep` が安全。`/aws/...` で始まるログ名はGit Bashがパス変換するので **PowerShell** で扱う。
 - AWS権限: この環境のClaudeは **root** で read/write 可（本番変更は役割分担に従いCodeXへ。検証はClaudeがread中心で実施）。
+- **ECSタスク定義リビジョンをハードコードしない**（2026-06-22 事故）。HANDOFFの`:5`を信じて `update-service --task-definition sinmirai-api:5` を渡したが、実際の稼働は `:6`（CloudFront/S3 env＋`CLOUDFRONT_PRIVATE_KEY` secret 入り）だった。`:5` へ巻き戻り、約2分間 CloudFront署名が欠けた状態に（ヘルスはDBのみ参照で200のまま＝検知漏れ）。**デプロイ前に必ず `describe-services --query "services[0].taskDefinition"` で稼働中リビジョンを確認**し、それをベースに指定する。image は `:latest` 参照なので、稼働中リビジョン＋`--force-new-deployment` で新イメージは引ける。
 
 ## 6. ドキュメント / git状態
 - 指示書（すべてコミット済み）: `docs/migration/{osaka-migration-plan,https-setup-plan,admin-password-change-plan,seed-bootstrap-plan}.md`、`docs/features/{user-management-plan,user-management-deploy}.md`。
