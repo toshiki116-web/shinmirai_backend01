@@ -189,6 +189,7 @@ Authorization: Bearer <device_token>
       "contentId": "CNT-00001",
       "contentName": "臨床試験ガイダンス映像 #04",
       "statusCategory": "status1",
+      "deliveryType": "general",
       "downloadUrl": "https://d1v1pzc5e0jqa0.cloudfront.net/contents/CNT-00001/....mp4?Expires=...&Signature=...",
       "thumbnailUrl": "https://d1v1pzc5e0jqa0.cloudfront.net/contents/CNT-00001/thumbnails/....jpg?Expires=...&Signature=...",
       "version": 1,
@@ -200,6 +201,7 @@ Authorization: Bearer <device_token>
 
 **ダウンロード方法・注意**
 
+- `deliveryType` は配信区分。`'general'`（一般・全拠点配信）または `'limited'`（特別・割当拠点のみ配信）。
 - `downloadUrl` は **CloudFront 署名付きURL**。このURLに対して**直接 GET でダウンロード**する（本APIサーバーは動画バイトを中継しない）。
 - `thumbnailUrl` はサムネイルが登録済み（`thumbnailStatus = 'ready'`）の場合のみ CloudFront 署名付きURLを返す。未設定・アップロード中・失敗時は `null`。
 - URLには**有効期限**がある。期限切れ後のアクセスは **403** になるため、ダウンロード前に本APIで取得し直すこと。

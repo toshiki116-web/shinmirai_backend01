@@ -1,6 +1,6 @@
 import { Injectable, ConflictException, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { ContentThumbnailStatus, ContentUploadStatus } from '@sinmirai/shared';
+import { ContentThumbnailStatus, ContentUploadStatus, DeliveryType } from '@sinmirai/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { ActivateDto } from './dto/activate.dto';
@@ -86,9 +86,9 @@ export class DeviceService {
       uploadStatus: ContentUploadStatus.READY,
       filePath: { not: null },
       OR: [
-        { deliveryType: 'general' },
+        { deliveryType: DeliveryType.GENERAL },
         {
-          deliveryType: 'limited',
+          deliveryType: DeliveryType.LIMITED,
           contentSiteAssignments: {
             some: { siteId: device.siteId },
           },
@@ -106,6 +106,7 @@ export class DeviceService {
         contentId: true,
         contentName: true,
         statusCategory: true,
+        deliveryType: true,
         filePath: true,
         thumbnailPath: true,
         thumbnailStatus: true,
@@ -119,6 +120,7 @@ export class DeviceService {
         contentId: c.contentId,
         contentName: c.contentName,
         statusCategory: c.statusCategory,
+        deliveryType: c.deliveryType,
         downloadUrl: c.filePath ? this.storageService.signContentUrl(c.filePath) : null,
         thumbnailUrl:
           c.thumbnailPath && c.thumbnailStatus === ContentThumbnailStatus.READY

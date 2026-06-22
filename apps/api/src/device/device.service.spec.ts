@@ -9,6 +9,7 @@ describe('DeviceService getContents thumbnails', () => {
             contentId: 'CNT-00001',
             contentName: 'Ready content',
             statusCategory: 'status1',
+            deliveryType: 'general',
             filePath: 'contents/CNT-00001/movie.mp4',
             thumbnailPath: 'contents/CNT-00001/thumbnails/thumb.jpg',
             thumbnailStatus: 'ready',
@@ -19,6 +20,7 @@ describe('DeviceService getContents thumbnails', () => {
             contentId: 'CNT-00002',
             contentName: 'No thumbnail',
             statusCategory: 'status1',
+            deliveryType: 'limited',
             filePath: 'contents/CNT-00002/movie.mp4',
             thumbnailPath: null,
             thumbnailStatus: 'none',
@@ -46,6 +48,13 @@ describe('DeviceService getContents thumbnails', () => {
       site: { siteId: 'LOC-0001', siteName: 'site' },
     });
 
+    expect(prisma.content.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({ deliveryType: true }),
+      }),
+    );
+    expect(result.items[0].deliveryType).toBe('general');
+    expect(result.items[1].deliveryType).toBe('limited');
     expect(result.items[0].thumbnailUrl).toBe(
       'https://cdn.example.test/contents/CNT-00001/thumbnails/thumb.jpg',
     );
