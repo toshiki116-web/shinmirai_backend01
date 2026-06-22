@@ -178,9 +178,11 @@ export class ContentsService {
 
     await this.prisma.$transaction(async (tx) => {
       await tx.contentSiteAssignment.deleteMany({ where: { contentId } });
-      await tx.contentSiteAssignment.createMany({
-        data: dto.siteIds.map((siteId) => ({ contentId, siteId })),
-      });
+      if (dto.siteIds.length > 0) {
+        await tx.contentSiteAssignment.createMany({
+          data: dto.siteIds.map((siteId) => ({ contentId, siteId })),
+        });
+      }
     });
 
     this.logger.log(`コンテンツ ${contentId} の配信対象拠点を更新: ${dto.siteIds.join(', ')}`);

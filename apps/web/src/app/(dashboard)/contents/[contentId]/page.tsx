@@ -10,6 +10,7 @@ import { ArrowLeft, Pencil, Trash2, Film, MapPin, HardDrive, Hash, Upload, Image
 import { statusLabels, formatDate, formatFileSize, type Content } from "@/lib/mock-data"
 import { ContentDialog } from "@/components/dialogs/content-dialog"
 import { DeleteDialog } from "@/components/dialogs/delete-dialog"
+import { SiteAssignmentDialog } from "@/components/dialogs/site-assignment-dialog"
 import { api, ApiClientError } from "@/lib/api-client"
 import { useAuth } from "@/lib/auth-context"
 
@@ -29,6 +30,7 @@ export default function ContentDetailPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const [editOpen, setEditOpen] = useState(false)
+  const [siteEditOpen, setSiteEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const [uploadError, setUploadError] = useState("")
@@ -52,7 +54,9 @@ export default function ContentDetailPage() {
   }, [contentId])
 
   useEffect(() => {
-    void fetchContent()
+    void Promise.resolve().then(() => {
+      void fetchContent()
+    })
   }, [fetchContent])
 
   async function uploadToSignedUrl(uploadUrl: string, file: File, onProgress: (progress: number) => void) {
@@ -393,7 +397,7 @@ export default function ContentDetailPage() {
               配信対象拠点（{assignedSites.length}拠点）
             </CardTitle>
             {canEdit && (
-              <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" onClick={() => setSiteEditOpen(true)}>
                 配信先を編集
               </Button>
             )}
@@ -430,6 +434,13 @@ export default function ContentDetailPage() {
             open={editOpen}
             onOpenChange={setEditOpen}
             content={content}
+            onSuccess={fetchContent}
+          />
+          <SiteAssignmentDialog
+            open={siteEditOpen}
+            onOpenChange={setSiteEditOpen}
+            contentId={content.contentId}
+            assignedSites={assignedSites}
             onSuccess={fetchContent}
           />
           <DeleteDialog

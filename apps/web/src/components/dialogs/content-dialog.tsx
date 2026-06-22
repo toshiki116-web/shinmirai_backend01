@@ -40,7 +40,12 @@ export function ContentDialog({ open, onOpenChange, content, onSuccess }: Props)
   const [selectedSiteIds, setSelectedSiteIds] = useState<string[]>([])
 
   useEffect(() => {
-    if (open) {
+    if (!open) return
+
+    let isActive = true
+    void Promise.resolve().then(() => {
+      if (!isActive) return
+
       setContentName(content?.contentName ?? "")
       setLanguage(content?.language ?? "ja")
       setDeliveryType(content?.deliveryType ?? "general")
@@ -48,30 +53,46 @@ export function ContentDialog({ open, onOpenChange, content, onSuccess }: Props)
       setSelectedSiteIds(content?.assignedSites?.map((site) => site.siteId) ?? [])
       setError("")
       void api.getSites({ limit: 100 })
-        .then((data) => setSites(data.items))
-        .catch((err) => {
-          setSites([])
-          setError(err instanceof ApiClientError ? err.message : "拠点一覧の取得に失敗しました")
+        .then((data) => {
+          if (isActive) setSites(data.items)
         })
+        .catch((err) => {
+          if (isActive) {
+            setSites([])
+            setError(err instanceof ApiClientError ? err.message : "拠点一覧の取得に失敗しました")
+          }
+        })
+    })
+
+    return () => {
+      isActive = false
     }
   }, [open, content])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError("")
-    if (deliveryType === "limited" && selectedSiteIds.length === 0) {
+    if (!isEdit && deliveryType === "limited" && selectedSiteIds.length === 0) {
       setError("限定配信では配信先拠点を1件以上選択してください")
       return
     }
     setIsLoading(true)
 
     try {
-      const data = {
+      const data: {
+        contentName: string
+        language: string
+        deliveryType: string
+        statusCategory: string
+        siteIds?: string[]
+      } = {
         contentName,
         language,
         deliveryType,
         statusCategory,
-        siteIds: deliveryType === "limited" ? selectedSiteIds : [],
+      }
+      if (!isEdit) {
+        data.siteIds = deliveryType === "limited" ? selectedSiteIds : []
       }
       if (isEdit) {
         await api.updateContent(content!.contentId, data)
@@ -158,7 +179,7 @@ export function ContentDialog({ open, onOpenChange, content, onSuccess }: Props)
               ))}
             </div>
           </div>
-          {deliveryType === "limited" && (
+          {!isEdit && deliveryType === "limited" && (
             <div className="space-y-2">
               <Label>配信先拠点 *</Label>
               <div className="max-h-40 space-y-2 overflow-y-auto rounded-md border border-input p-3">
