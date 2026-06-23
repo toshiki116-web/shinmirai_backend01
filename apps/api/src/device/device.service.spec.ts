@@ -1,5 +1,5 @@
 import { DeviceService } from './device.service';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 
 const device = {
   unitId: 'UNIT-1',
@@ -13,6 +13,70 @@ const device = {
   licenseExpiredAt: null,
   site: { siteId: 'LOC-0001', siteName: 'site' },
 };
+
+describe('DeviceService activate', () => {
+  function createService() {
+    const prisma = {
+      unit: {
+        update: jest.fn().mockResolvedValue({
+          unitId: 'UNIT-1',
+          siteId: 'LOC-0001',
+          pcUuid: '550e8400-e29b-41d4-a716-446655440000',
+          deviceToken: 'device-token',
+        }),
+      },
+    };
+    const storageService = {};
+
+    return {
+      service: new DeviceService(prisma as any, storageService as any),
+      prisma,
+    };
+  }
+
+  it('registers only the PC UUID for the authenticated unit', async () => {
+    const { service, prisma } = createService();
+
+    const result = await service.activate(device, {
+      pcUuid: '550e8400-e29b-41d4-a716-446655440000',
+    });
+
+    expect(prisma.unit.update).toHaveBeenCalledWith({
+      where: { unitId: 'UNIT-1' },
+      data: { pcUuid: '550e8400-e29b-41d4-a716-446655440000' },
+    });
+    expect(result).toEqual({
+      unitId: 'UNIT-1',
+      siteId: 'LOC-0001',
+      pcUuid: '550e8400-e29b-41d4-a716-446655440000',
+      deviceToken: 'device-token',
+    });
+  });
+
+  it('rejects an already activated unit', async () => {
+    const { service, prisma } = createService();
+
+    await expect(
+      service.activate(
+        { ...device, pcUuid: '550e8400-e29b-41d4-a716-446655440000' },
+        { pcUuid: '550e8400-e29b-41d4-a716-446655440001' },
+      ),
+    ).rejects.toThrow(ConflictException);
+    expect(prisma.unit.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects a unit without an assigned site', async () => {
+    const { service, prisma } = createService();
+
+    await expect(
+      service.activate(
+        { ...device, siteId: null, site: null },
+        { pcUuid: '550e8400-e29b-41d4-a716-446655440000' },
+      ),
+    ).rejects.toThrow(BadRequestException);
+    expect(prisma.unit.update).not.toHaveBeenCalled();
+  });
+});
 
 describe('DeviceService getContents thumbnails', () => {
   it('returns signed thumbnail URLs only for ready thumbnails', async () => {

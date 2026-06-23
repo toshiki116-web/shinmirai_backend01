@@ -19,18 +19,10 @@ export class DeviceController {
 
   @Public()
   @UseGuards(DeviceAuthGuard)
-  @Get('master/sites-units')
-  @ApiOperation({ summary: '拠点・筐体マスタ取得', description: '初期設定時に拠点名・筐体名を選択するための候補を取得' })
-  @ApiResponse({ status: 200, description: '拠点・筐体一覧' })
-  getMasterSitesUnits() {
-    return this.deviceService.getMasterSitesUnits();
-  }
-
-  @Public()
-  @UseGuards(DeviceAuthGuard)
   @Post('activate')
-  @ApiOperation({ summary: '筐体紐付け登録', description: '筐体を拠点ID・筐体IDと紐付けてpc_uuidを登録' })
+  @ApiOperation({ summary: '筐体紐付け登録', description: '認証済み筐体にPC端末UUIDを登録' })
   @ApiResponse({ status: 200, description: '紐付け成功' })
+  @ApiResponse({ status: 400, description: '拠点未割当またはリクエスト不正' })
   @ApiResponse({ status: 409, description: '既に紐付け済み' })
   activate(@CurrentDevice() device: any, @Body() dto: ActivateDto) {
     return this.deviceService.activate(device, dto);

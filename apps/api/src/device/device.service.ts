@@ -33,40 +33,22 @@ export class DeviceService {
     private readonly storageService: StorageService,
   ) {}
 
-  /** 拠点・筐体マスタ取得（初期設定用） */
-  async getMasterSitesUnits() {
-    const sites = await this.prisma.site.findMany({
-      where: { status: { not: 'deleted' } },
-      select: {
-        siteId: true,
-        siteName: true,
-        units: {
-          where: { status: { not: 'deleted' } },
-          select: { unitId: true, unitName: true },
-        },
-      },
-      orderBy: { siteName: 'asc' },
-    });
-
-    return { sites };
-  }
-
   /** 筐体紐付け登録 */
   async activate(device: UnitWithSite, dto: ActivateDto) {
     // 既にpc_uuidが設定済みの場合はエラー
     if (device.pcUuid) {
       throw new ConflictException('この筐体は既に紐付け済みです。管理画面から解除してください');
     }
+    if (!device.siteId) {
+      throw new BadRequestException('この筐体は拠点が未割当です。管理画面で拠点を割り当ててください');
+    }
 
     const updated = await this.prisma.unit.update({
       where: { unitId: device.unitId },
-      data: {
-        siteId: dto.siteId,
-        pcUuid: dto.pcUuid,
-      },
+      data: { pcUuid: dto.pcUuid },
     });
 
-    this.logger.log(`筐体紐付け完了: ${device.unitId} -> 拠点:${dto.siteId}, PC:${dto.pcUuid}`);
+    this.logger.log(`筐体紐付け完了: ${device.unitId} -> 拠点:${device.siteId}, PC:${dto.pcUuid}`);
 
     return {
       unitId: updated.unitId,

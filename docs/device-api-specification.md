@@ -93,9 +93,10 @@ Authorization: Bearer <device_token>
 
 ### 3.1 初期セットアップ（筐体の紐付け）
 
-1. `GET /api/device/master/sites-units` で拠点・筐体の候補を取得し、現場の設置に対応する `siteId` / `unitId` を選択。
-2. `POST /api/device/activate` で `siteId` / `unitId` / `pcUuid` を送信し、筐体を紐付ける。
-   - 紐付け後は当該筐体の `siteId` が確定し、以降の配信対象判定に使われる。
+1. 管理画面で筐体を登録し、発行された `device_token` を現場の筐体制御システムへ設定する。
+2. `POST /api/device/activate` で `pcUuid` のみを送信し、認証済み筐体にPC端末UUIDを登録する。
+   - 拠点・筐体は `device_token` から特定される。`siteId` / `unitId` は送信しない。
+   - 拠点は管理画面での筐体登録時に確定し、以降の配信対象判定に使われる。
 
 ### 3.2 通常運用
 
@@ -112,38 +113,14 @@ Authorization: Bearer <device_token>
 
 > 以下、レスポンスは `data` の中身のみを示す（実際は §2.3 の統一形式でラップされる）。
 
-### 4.1 GET /api/device/master/sites-units
+### 4.1 POST /api/device/activate
 
-初期設定画面用に、拠点・筐体マスタ（選択候補）を取得する。
-
-**レスポンス**
-
-```json
-{
-  "sites": [
-    {
-      "siteId": "LOC-0001",
-      "siteName": "大阪梅田店",
-      "units": [
-        { "unitId": "UNIT-A0B1C2D3", "unitName": "1号機" }
-      ]
-    }
-  ]
-}
-```
-
----
-
-### 4.2 POST /api/device/activate
-
-筐体を拠点・筐体IDに紐付け、PC端末のUUIDを登録する。
+認証済み筐体にPC端末のUUIDを登録する。
 
 **リクエスト**
 
 | フィールド | 型 | 必須 | 説明 |
 | --- | --- | --- | --- |
-| `siteId` | string | ○ | 拠点ID（例 `LOC-0001`） |
-| `unitId` | string | ○ | 筐体ID（例 `UNIT-A001`） |
 | `pcUuid` | string (UUID v4) | ○ | PC端末UUID |
 
 **レスポンス**
@@ -160,10 +137,11 @@ Authorization: Bearer <device_token>
 **エラー**
 
 - 409: `この筐体は既に紐付け済みです。管理画面から解除してください`（既に `pcUuid` 設定済み）
+- 400: `この筐体は拠点が未割当です。管理画面で拠点を割り当ててください`（拠点未割当）
 
 ---
 
-### 4.3 GET /api/device/contents
+### 4.2 GET /api/device/contents
 
 当該筐体に**配信可能な動画コンテンツ一覧**と、その**ダウンロード用署名付きURL**を取得する。
 
@@ -172,7 +150,7 @@ Authorization: Bearer <device_token>
 - 一般動画（`deliveryType = 'general'`）: **全拠点に配信**
 - 特別動画（`deliveryType = 'limited'`）: **当該筐体の拠点に割り当てられたコンテンツのみ配信**
 - いずれも、アップロード完了済み（`uploadStatus = 'ready'`）かつファイル登録済みのもののみが対象。
-- 筐体が未紐付け（`siteId` 未設定）の場合は空配列を返す。
+- 管理データ不整合等により筐体の `siteId` が未設定の場合は空配列を返す。
 
 **クエリ**
 
@@ -210,7 +188,7 @@ Authorization: Bearer <device_token>
 
 ---
 
-### 4.4 GET /api/device/license-check
+### 4.3 GET /api/device/license-check
 
 筐体のライセンス有効性を確認する。
 
@@ -228,7 +206,7 @@ Authorization: Bearer <device_token>
 
 ---
 
-### 4.5 POST /api/device/heartbeat
+### 4.4 POST /api/device/heartbeat
 
 筐体の稼働状況と各デバイスのステータスを送信する。受信時に筐体の状態・最終受信時刻が更新され、管理画面に反映される。
 
@@ -248,7 +226,7 @@ Authorization: Bearer <device_token>
 
 ---
 
-### 4.6 POST /api/device/alerts
+### 4.5 POST /api/device/alerts
 
 未接続発生・復旧などのアラートを送信する。`level` が `error` または `critical` の場合、筐体の状態が `warning` に遷移し、管理画面にアラートメッセージが反映される。
 
@@ -270,7 +248,7 @@ Authorization: Bearer <device_token>
 
 ---
 
-### 4.7 POST /api/device/analytics/daily
+### 4.6 POST /api/device/analytics/daily
 
 日次の利用回数を送信する。同一 `(筐体, 対象日)` は UPSERT（上書き）される。
 
@@ -289,7 +267,7 @@ Authorization: Bearer <device_token>
 
 ---
 
-### 4.8 POST /api/device/logs/upload-url
+### 4.7 POST /api/device/logs/upload-url
 
 ローテーション済みログファイルをS3へ直接PUTするためのPresigned URLを取得する。
 
@@ -311,11 +289,11 @@ Authorization: Bearer <device_token>
 }
 ```
 
-### 4.9 PUT uploadUrl
+### 4.8 PUT uploadUrl
 
 `upload-url` で取得したURLへログファイル本体をPUTする。APIサーバーはファイル本体を中継しない。
 
-### 4.10 POST /api/device/logs/upload-complete
+### 4.9 POST /api/device/logs/upload-complete
 
 S3上のログファイル実体を検証し、DBへメタデータを保存する。同名ファイルの再送時は既存メタデータを更新する。
 
