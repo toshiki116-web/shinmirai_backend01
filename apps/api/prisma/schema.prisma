@@ -74,7 +74,7 @@ model Unit {
   updatedAt     DateTime @updatedAt @map("updated_at")
 
   site          Site?    @relation(fields: [siteId], references: [siteId])
-  deviceLogs    DeviceLog[]
+  deviceLogFiles DeviceLogFile[]
   deviceAlerts  DeviceAlert[]
   dailyAnalytics DailyAnalytics[]
 
@@ -118,20 +118,21 @@ model ContentSiteAssignment {
   @@map("content_site_assignments")
 }
 
-/// デバイスログテーブル
-model DeviceLog {
-  logId      String   @id @default(uuid()) @map("log_id")
-  unitId     String   @map("unit_id")
-  logType    String   @map("log_type")
-  level      String
-  message    String
-  occurredAt DateTime @map("occurred_at")
-  createdAt  DateTime @default(now()) @map("created_at")
+/// デバイスログファイルテーブル
+model DeviceLogFile {
+  logFileId   String   @id @default(uuid()) @map("log_file_id")
+  unitId      String   @map("unit_id")
+  fileName    String   @map("file_name")
+  s3Key       String   @unique @map("s3_key")
+  fileSize    Int      @map("file_size")
+  contentType String?  @map("content_type")
+  checksum    String?
+  uploadedAt  DateTime @default(now()) @map("uploaded_at")
 
-  unit       Unit     @relation(fields: [unitId], references: [unitId])
+  unit        Unit     @relation(fields: [unitId], references: [unitId])
 
-  @@index([unitId, occurredAt])
-  @@map("device_logs")
+  @@index([unitId, uploadedAt])
+  @@map("device_log_files")
 }
 
 /// アラートテーブル

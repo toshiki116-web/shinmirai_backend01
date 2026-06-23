@@ -6,6 +6,7 @@ import { UpdateUnitDto } from './dto/update-unit.dto';
 import { UpdateLicenseDto } from './dto/update-license.dto';
 import { UnitQueryDto } from './dto/unit-query.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { PaginationDto } from '../../common/dto/pagination.dto';
 
 @ApiTags('筐体管理')
 @ApiBearerAuth()
@@ -26,6 +27,20 @@ export class UnitsController {
   @ApiResponse({ status: 404, description: '筐体が見つからない' })
   findOne(@Param('unitId') unitId: string) {
     return this.unitsService.findOne(unitId);
+  }
+
+  @Get(':unitId/logs')
+  @ApiOperation({ summary: 'ログファイル一覧取得', description: '筐体がアップロードしたログファイルのメタデータを取得' })
+  @ApiResponse({ status: 200, description: 'ログファイル一覧' })
+  findLogFiles(@Param('unitId') unitId: string, @Query() query: PaginationDto) {
+    return this.unitsService.findLogFiles(unitId, query);
+  }
+
+  @Get(':unitId/logs/:logFileId/download-url')
+  @ApiOperation({ summary: 'ログファイルダウンロードURL発行', description: 'ログファイル取得用のPresigned GET URLを発行' })
+  @ApiResponse({ status: 200, description: 'URL発行成功' })
+  createLogDownloadUrl(@Param('unitId') unitId: string, @Param('logFileId') logFileId: string) {
+    return this.unitsService.createLogDownloadUrl(unitId, logFileId);
   }
 
   @Post()

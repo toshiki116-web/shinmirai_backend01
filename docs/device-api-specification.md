@@ -103,7 +103,7 @@ Authorization: Bearer <device_token>
 - **コンテンツの取得とダウンロード**: `GET /api/device/contents` で配信対象＋署名付きURLを取得 → URLで動画を直接ダウンロード。
 - **ライセンス確認**: `GET /api/device/license-check`。
 - **異常通知**: `POST /api/device/alerts`。
-- **ログ送信**: `POST /api/device/logs`（最大100件/回）。
+- **ログ送信**: `POST /api/device/logs/upload-url` → S3へPUT → `POST /api/device/logs/upload-complete`。
 - **利用回数送信**: `POST /api/device/analytics/daily`（日次）。
 
 ---
@@ -289,29 +289,52 @@ Authorization: Bearer <device_token>
 
 ---
 
-### 4.8 POST /api/device/logs
+### 4.8 POST /api/device/logs/upload-url
 
-アプリログ・障害ログ・イベントログを一括送信する（**1回のリクエストで最大100件**）。
+ローテーション済みログファイルをS3へ直接PUTするためのPresigned URLを取得する。
 
 **リクエスト**
 
 | フィールド | 型 | 必須 | 説明 |
 | --- | --- | --- | --- |
-| `logType` | `'application' \| 'error' \| 'event'` | ○ | ログ種別 |
-| `logs` | `LogEntry[]` | ○ | ログエントリ配列（最大100件） |
-
-`LogEntry`:
-
-| フィールド | 型 | 必須 | 説明 |
-| --- | --- | --- | --- |
-| `timestamp` | string (ISO 8601) | ○ | 発生時刻 |
-| `level` | `'DEBUG' \| 'INFO' \| 'WARN' \| 'ERROR'` | ○ | ログレベル |
-| `message` | string | ○ | 本文 |
+| `fileName` | string | ○ | ログファイル名。`A-Z a-z 0-9 . _ -` のみ許可 |
+| `contentType` | string | ○ | `text/plain` または `application/gzip` |
+| `fileSize` | number | ○ | ファイルサイズ(bytes)。環境変数 `MAX_LOG_SIZE_BYTES` 以下 |
 
 **レスポンス**
 
 ```json
-{ "receivedCount": 5 }
+{
+  "uploadUrl": "https://...",
+  "objectKey": "logs/UNIT-A0B1C2D3/app-20260623.log",
+  "expiresIn": 900
+}
+```
+
+### 4.9 PUT uploadUrl
+
+`upload-url` で取得したURLへログファイル本体をPUTする。APIサーバーはファイル本体を中継しない。
+
+### 4.10 POST /api/device/logs/upload-complete
+
+S3上のログファイル実体を検証し、DBへメタデータを保存する。同名ファイルの再送時は既存メタデータを更新する。
+
+**リクエスト**
+
+| フィールド | 型 | 必須 | 説明 |
+| --- | --- | --- | --- |
+| `objectKey` | string | ○ | `upload-url` で返却されたS3キー |
+| `fileName` | string | ○ | `upload-url` に指定したログファイル名 |
+| `contentType` | string | ○ | 筐体が送信したMIME。保存時はS3実体のContent-Typeを優先 |
+| `checksum` | string | - | クライアント側チェックサム |
+
+**レスポンス**
+
+```json
+{
+  "logFileId": "uuid",
+  "receivedAt": "2026-06-23T10:00:00.000Z"
+}
 ```
 
 ---
@@ -322,8 +345,6 @@ Authorization: Bearer <device_token>
 | --- | --- | --- |
 | 筐体ステータス | `normal`, `warning`, `stop`, `maintenance` | heartbeat `status` |
 | アラートレベル | `info`, `warning`, `error`, `critical` | alerts `level` |
-| ログレベル | `DEBUG`, `INFO`, `WARN`, `ERROR` | logs `level` |
-| ログ種別 | `application`, `error`, `event` | logs `logType` |
 | ライセンス状態 | `valid`, `expired`, `suspended`, `unknown` | license-check 判定 |
 | 配信区分 | `general`（一般＝全拠点）, `limited`（特別＝割当拠点のみ） | contents 配信ルール |
 | 状態カテゴリ | `status1`, `status2`, `status3` | contents `statusCategory` |
@@ -336,8 +357,8 @@ Authorization: Bearer <device_token>
 - **配信対象**は `uploadStatus = 'ready'` の動画のみ。アップロード中・未アップロードの動画は一覧に出ない。
 - **一般／特別の出し分け**: 一般は全拠点、特別は割当拠点のみ（§4.3）。
 - **更新検知**: `contentId` ごとの `version` 上昇／`checksum` 変化で再ダウンロード判定が可能。
-- **ログは最大100件/リクエスト**。超過時は分割送信。
-- **日時はISO 8601**で送る。`sentAt`/`occurredAt`/`timestamp` はタイムゾーン付き推奨。
+- **ログはローテーション済みファイル単位で送信**。種別は `app-20260623.log` などファイル名で表現する。
+- **日時はISO 8601**で送る。`sentAt`/`occurredAt` はタイムゾーン付き推奨。
 - **device_token の保護**: 筐体ごとに一意の秘密情報。漏洩時は管理画面で筐体を削除/再発行する運用。
 - **未定義プロパティ禁止**: DTOにないキーを本文に含めると 400。
 

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateUnitDto } from './dto/create-unit.dto';
@@ -6,10 +6,15 @@ import { UpdateUnitDto } from './dto/update-unit.dto';
 import { UpdateLicenseDto } from './dto/update-license.dto';
 import { UnitQueryDto } from './dto/unit-query.dto';
 import { Prisma } from '@prisma/client';
+import { PaginationDto } from '../../common/dto/pagination.dto';
+import { StorageService } from '../../storage/storage.service';
 
 @Injectable()
 export class UnitsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storageService: StorageService,
+  ) {}
 
   async findAll(query: UnitQueryDto) {
     const where: Prisma.UnitWhereInput = {
@@ -62,8 +67,8 @@ export class UnitsService {
           orderBy: { occurredAt: 'desc' },
           take: 10,
         },
-        deviceLogs: {
-          orderBy: { occurredAt: 'desc' },
+        deviceLogFiles: {
+          orderBy: { uploadedAt: 'desc' },
           take: 20,
         },
       },
@@ -142,6 +147,51 @@ export class UnitsService {
       throw new NotFoundException(`筐体 ${unitId} が見つかりません`);
     }
     return unit;
+  }
+
+  async findLogFiles(unitId: string, query: PaginationDto) {
+    await this.ensureExists(unitId);
+
+    const where: Prisma.DeviceLogFileWhereInput = { unitId };
+    const [items, total] = await Promise.all([
+      this.prisma.deviceLogFile.findMany({
+        where,
+        skip: query.skip,
+        take: query.limit,
+        orderBy: { uploadedAt: 'desc' },
+        select: {
+          logFileId: true,
+          fileName: true,
+          fileSize: true,
+          contentType: true,
+          uploadedAt: true,
+        },
+      }),
+      this.prisma.deviceLogFile.count({ where }),
+    ]);
+
+    return {
+      items,
+      total,
+      page: query.page,
+      limit: query.limit,
+    };
+  }
+
+  async createLogDownloadUrl(unitId: string, logFileId: string) {
+    await this.ensureExists(unitId);
+
+    const logFile = await this.prisma.deviceLogFile.findFirst({
+      where: { unitId, logFileId },
+    });
+    if (!logFile) {
+      throw new NotFoundException(`Log file ${logFileId} not found`);
+    }
+    if (!logFile.s3Key.startsWith(`logs/${unitId}/`)) {
+      throw new BadRequestException('Log file key does not match the unit');
+    }
+
+    return this.storageService.createLogDownloadUrl(logFile.s3Key);
   }
 
   private async ensureSiteExists(siteId: string) {

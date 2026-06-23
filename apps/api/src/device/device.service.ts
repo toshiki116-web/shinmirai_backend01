@@ -1,4 +1,4 @@
-import { Injectable, ConflictException, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, ConflictException, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { ContentThumbnailStatus, ContentUploadStatus, DeliveryType } from '@sinmirai/shared';
 import { PrismaService } from '../prisma/prisma.service';
@@ -7,7 +7,8 @@ import { ActivateDto } from './dto/activate.dto';
 import { HeartbeatDto } from './dto/heartbeat.dto';
 import { CreateAlertDto } from './dto/alert.dto';
 import { DailyAnalyticsDto } from './dto/analytics.dto';
-import { SendLogsDto } from './dto/send-logs.dto';
+import { CreateLogUploadUrlDto } from './dto/create-log-upload-url.dto';
+import { CompleteLogUploadDto } from './dto/complete-log-upload.dto';
 
 // Prismaが生成するUnit型を使用
 type UnitWithSite = {
@@ -209,18 +210,68 @@ export class DeviceService {
     return { received: true };
   }
 
-  /** ログ一括送信 */
-  async sendLogs(device: UnitWithSite, dto: SendLogsDto) {
-    const createdCount = await this.prisma.deviceLog.createMany({
-      data: dto.logs.map((log) => ({
+  async createLogUploadUrl(device: UnitWithSite, dto: CreateLogUploadUrlDto) {
+    return this.storageService.createLogUploadUrl({
+      unitId: device.unitId,
+      fileName: dto.fileName,
+      contentType: dto.contentType,
+      fileSize: dto.fileSize,
+    });
+  }
+
+  async completeLogUpload(device: UnitWithSite, dto: CompleteLogUploadDto) {
+    const fileName = this.storageService.validateLogFileName(dto.fileName);
+    const expectedObjectKey = this.storageService.buildLogObjectKey(device.unitId, fileName);
+    if (dto.objectKey !== expectedObjectKey) {
+      throw new BadRequestException('Log object key does not match the authenticated unit');
+    }
+
+    let head;
+    try {
+      head = await this.storageService.headLogObject(dto.objectKey);
+    } catch (err) {
+      throw new BadRequestException('Uploaded log file could not be confirmed');
+    }
+
+    try {
+      this.storageService.validateLogUpload(head.contentType, Number(head.fileSize));
+    } catch (err) {
+      try {
+        await this.storageService.deleteLogObject(dto.objectKey);
+      } catch (deleteErr) {
+        this.logger.warn(`Failed to delete invalid log object: ${dto.objectKey}`);
+      }
+      throw err;
+    }
+
+    const contentType = head.contentType
+      ? this.storageService.normalizeContentType(head.contentType)
+      : null;
+    const now = new Date();
+    const logFile = await this.prisma.deviceLogFile.upsert({
+      where: { s3Key: dto.objectKey },
+      update: {
         unitId: device.unitId,
-        logType: dto.logType,
-        level: log.level,
-        message: log.message,
-        occurredAt: new Date(log.timestamp),
-      })),
+        fileName,
+        fileSize: Number(head.fileSize),
+        contentType,
+        checksum: dto.checksum ?? head.checksum,
+        uploadedAt: now,
+      },
+      create: {
+        unitId: device.unitId,
+        fileName,
+        s3Key: dto.objectKey,
+        fileSize: Number(head.fileSize),
+        contentType,
+        checksum: dto.checksum ?? head.checksum,
+        uploadedAt: now,
+      },
     });
 
-    return { receivedCount: createdCount.count };
+    return {
+      logFileId: logFile.logFileId,
+      receivedAt: logFile.uploadedAt,
+    };
   }
 }

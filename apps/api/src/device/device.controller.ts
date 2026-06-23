@@ -8,7 +8,8 @@ import { ActivateDto } from './dto/activate.dto';
 import { HeartbeatDto } from './dto/heartbeat.dto';
 import { CreateAlertDto } from './dto/alert.dto';
 import { DailyAnalyticsDto } from './dto/analytics.dto';
-import { SendLogsDto } from './dto/send-logs.dto';
+import { CreateLogUploadUrlDto } from './dto/create-log-upload-url.dto';
+import { CompleteLogUploadDto } from './dto/complete-log-upload.dto';
 
 @ApiTags('筐体向けAPI')
 @ApiBearerAuth()
@@ -82,10 +83,19 @@ export class DeviceController {
 
   @Public()
   @UseGuards(DeviceAuthGuard)
-  @Post('logs')
-  @ApiOperation({ summary: 'ログ一括送信', description: 'アプリログ・障害ログ・イベントログを一括送信（最大100件）' })
-  @ApiResponse({ status: 200, description: '受信成功' })
-  sendLogs(@CurrentDevice() device: any, @Body() dto: SendLogsDto) {
-    return this.deviceService.sendLogs(device, dto);
+  @Post('logs/upload-url')
+  @ApiOperation({ summary: 'ログアップロードURL発行', description: 'ローテーション済みログファイル用のPresigned PUT URLを発行' })
+  @ApiResponse({ status: 201, description: 'URL発行成功' })
+  createLogUploadUrl(@CurrentDevice() device: any, @Body() dto: CreateLogUploadUrlDto) {
+    return this.deviceService.createLogUploadUrl(device, dto);
+  }
+
+  @Public()
+  @UseGuards(DeviceAuthGuard)
+  @Post('logs/upload-complete')
+  @ApiOperation({ summary: 'ログアップロード完了', description: 'S3上のログファイルを検証しメタデータを保存' })
+  @ApiResponse({ status: 201, description: '保存成功' })
+  completeLogUpload(@CurrentDevice() device: any, @Body() dto: CompleteLogUploadDto) {
+    return this.deviceService.completeLogUpload(device, dto);
   }
 }

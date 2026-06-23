@@ -10,8 +10,11 @@ describe('StorageService thumbnail validation', () => {
       get: jest.fn((key: string) => {
         const values: Record<string, string> = {
           S3_CONTENTS_BUCKET: 'test-bucket',
+          S3_LOGS_BUCKET: 'test-logs-bucket',
           ALLOWED_THUMBNAIL_MIME: 'image/jpeg,image/png,image/webp',
           MAX_THUMBNAIL_SIZE_BYTES: '5242880',
+          ALLOWED_LOG_MIME: 'text/plain,application/gzip',
+          MAX_LOG_SIZE_BYTES: '52428800',
         };
         return values[key];
       }),
@@ -36,5 +39,24 @@ describe('StorageService thumbnail validation', () => {
     expect(service.imageExtFromMime('image/png')).toBe('png');
     expect(service.imageExtFromMime('image/webp')).toBe('webp');
     expect(() => service.imageExtFromMime('application/octet-stream')).toThrow(BadRequestException);
+  });
+
+  it('accepts safe log file names and rejects unsafe names', () => {
+    expect(service.validateLogFileName('app-20260623.log')).toBe('app-20260623.log');
+    expect(() => service.validateLogFileName('../app.log')).toThrow(BadRequestException);
+    expect(() => service.validateLogFileName('dir/app.log')).toThrow(BadRequestException);
+    expect(() => service.validateLogFileName('dir\\app.log')).toThrow(BadRequestException);
+    expect(() => service.validateLogFileName(' app.log')).toThrow(BadRequestException);
+    expect(() => service.validateLogFileName('a'.repeat(256))).toThrow(BadRequestException);
+  });
+
+  it('validates log MIME types and sizes', () => {
+    expect(() => service.validateLogUpload('text/plain; charset=utf-8', 1024)).not.toThrow();
+    expect(() => service.validateLogUpload('application/gzip', 50 * 1024 * 1024)).not.toThrow();
+    expect(() => service.validateLogUpload('application/json', 1024)).toThrow(BadRequestException);
+    expect(() => service.validateLogUpload('text/plain', 0)).toThrow(BadRequestException);
+    expect(() => service.validateLogUpload('text/plain', 50 * 1024 * 1024 + 1)).toThrow(
+      BadRequestException,
+    );
   });
 });
