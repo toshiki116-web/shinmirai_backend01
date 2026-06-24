@@ -9,7 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { LogOut, User } from "lucide-react"
+import { LogOut } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
 
 export function Header() {
@@ -36,11 +36,7 @@ export function Header() {
           }
         />
         <DropdownMenuContent align="end" className="w-48">
-          <DropdownMenuItem>
-            <User className="mr-2 h-4 w-4" />
-            プロフィール
-          </DropdownMenuItem>
-          <DropdownMenuItem className="text-destructive" onSelect={() => { void logout() }}>
+          <DropdownMenuItem className="text-destructive" onClick={() => { void logout() }}>
             <LogOut className="mr-2 h-4 w-4" />
             ログアウト
           </DropdownMenuItem>

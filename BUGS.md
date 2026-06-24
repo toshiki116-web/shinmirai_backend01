@@ -106,3 +106,16 @@
   - **修正後の確認**: master でログインした直後のダッシュボードでサイドバーに「ユーザー管理」が表示される。editor/viewer では従来どおり非表示。ログイン失敗時はサーバーのメッセージが表示される。
   - **回帰ガード（静的）**: `login/page.tsx` に直接の `fetch(.../auth/login)` / `setTokens` / `localStorage.setItem("sinmirai_admin"` が残っていないこと（認証状態更新は AuthContext に一本化）。
 - **再発防止策**: 認証状態の更新経路を AuthContext の `login()` に一本化し、トークン保存・`admin` state 更新・localStorage 永続化を単一の責務にまとめた。直接 `fetch` する旧経路を排除することで、state とストレージの不整合（＝ロール依存UIのちらつき）を構造的に防ぐ。
+
+---
+
+## BUG-006: 右上ユーザーメニューの「ログアウト」が効かない
+
+- **発生日**: 2026-06-24
+- **修正日**: 2026-06-24
+- **修正コミット**: 本コミット（`[fix] ... (BUG-006)`）
+- **症状**: 管理画面ヘッダー右上のユーザーメニューから「ログアウト」を押しても何も起きない（サイドバーのログアウトは正常）。
+- **原因**: ドロップダウンは Base UI（`@base-ui/react`）実装で、`Menu.Item` のクリックハンドラは `onClick`。`header.tsx` が Radix 流の `onSelect` を渡していたため、DOM ネイティブの `onSelect`（テキスト選択イベント）として透過しクリックで発火せず、`logout()` が呼ばれていなかった。
+- **修正内容**: `apps/web/src/components/layout/header.tsx` のログアウト項目を `onSelect` → `onClick` に変更。併せて非機能の「プロフィール」項目（遷移先 `/profile` 未実装）を一旦削除し、未使用の `User` import を除去。
+- **再現テスト**: 自動テスト基盤が無いため手動再現/回帰で代替（指示書 `docs/features/fix-header-logout-plan.md` 参照）。
+- **再発防止策**: Base UI の `Menu.Item` は `onClick` を使うことを徹底（`onSelect` は Radix のAPIで Base UI では発火しない）。`header.tsx` に `onSelect` が残っていないことを静的grepで確認。
