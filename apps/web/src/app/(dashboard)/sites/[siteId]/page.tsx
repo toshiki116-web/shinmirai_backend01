@@ -14,10 +14,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { ArrowLeft, Pencil, Trash2, Box } from "lucide-react"
+import { ArrowLeft, Pencil, Trash2, Box, Plus } from "lucide-react"
 import { statusLabels, formatDate, formatDateTime, type Site, type Unit } from "@/lib/mock-data"
 import { SiteDialog } from "@/components/dialogs/site-dialog"
 import { DeleteDialog } from "@/components/dialogs/delete-dialog"
+import { UnitDialog } from "@/components/dialogs/unit-dialog"
 import { api, ApiClientError } from "@/lib/api-client"
 import { useAuth } from "@/lib/auth-context"
 
@@ -33,6 +34,7 @@ export default function SiteDetailPage() {
   const [error, setError] = useState("")
   const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [createUnitOpen, setCreateUnitOpen] = useState(false)
   const { admin } = useAuth()
   const canEdit = admin?.role === "master" || admin?.role === "editor"
 
@@ -149,8 +151,14 @@ export default function SiteDetailPage() {
       </div>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">配下の筐体</CardTitle>
+          {canEdit && (
+            <Button size="sm" onClick={() => setCreateUnitOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              筐体を追加
+            </Button>
+          )}
         </CardHeader>
         <CardContent className="p-0">
           <Table>
@@ -167,8 +175,19 @@ export default function SiteDetailPage() {
             <TableBody>
               {units.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
-                    配下の筐体がありません
+                  <TableCell colSpan={6} className="py-8 text-center">
+                    <p className="text-muted-foreground">配下の筐体がありません</p>
+                    {canEdit && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="mt-3 text-foreground"
+                        onClick={() => setCreateUnitOpen(true)}
+                      >
+                        <Plus className="mr-2 h-4 w-4" />
+                        筐体を追加
+                      </Button>
+                    )}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -217,6 +236,13 @@ export default function SiteDetailPage() {
             open={editOpen}
             onOpenChange={setEditOpen}
             site={site}
+            onSuccess={fetchSite}
+          />
+          <UnitDialog
+            open={createUnitOpen}
+            onOpenChange={setCreateUnitOpen}
+            defaultSiteId={site.siteId}
+            defaultSiteName={site.siteName}
             onSuccess={fetchSite}
           />
           <DeleteDialog

@@ -21,10 +21,12 @@ type Props = {
   open: boolean
   onOpenChange: (open: boolean) => void
   unit?: Unit | null
+  defaultSiteId?: string
+  defaultSiteName?: string
   onSuccess: () => void
 }
 
-export function UnitDialog({ open, onOpenChange, unit, onSuccess }: Props) {
+export function UnitDialog({ open, onOpenChange, unit, defaultSiteId, defaultSiteName, onSuccess }: Props) {
   const isEdit = !!unit
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
@@ -38,7 +40,7 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess }: Props) {
 
   useEffect(() => {
     if (open) {
-      setSiteId(unit?.siteId ?? "")
+      setSiteId(unit?.siteId ?? defaultSiteId ?? "")
       setUnitName(unit?.unitName ?? "")
       setConnectionMode(unit?.connectionMode ?? "online")
       setError("")
@@ -51,7 +53,7 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess }: Props) {
           setError(err instanceof ApiClientError ? err.message : "拠点一覧の取得に失敗しました")
         })
     }
-  }, [open, unit])
+  }, [open, unit, defaultSiteId])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -96,8 +98,13 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess }: Props) {
   }
 
   if (deviceToken) {
+    const handleClose = () => {
+      onOpenChange(false)
+      onSuccess()
+    }
+
     return (
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose() }}>
         <DialogContent className="sm:max-w-[480px]">
           <DialogHeader>
             <DialogTitle>筐体が作成されました</DialogTitle>
@@ -117,7 +124,7 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess }: Props) {
             </div>
           </div>
           <DialogFooter>
-            <Button onClick={() => { onOpenChange(false); onSuccess() }}>
+            <Button onClick={handleClose}>
               閉じる
             </Button>
           </DialogFooter>
@@ -141,23 +148,32 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess }: Props) {
               {error}
             </div>
           )}
-          <div className="space-y-2">
-            <Label htmlFor="unit-site">所属拠点 *</Label>
-            <select
-              id="unit-site"
-              value={siteId}
-              onChange={(e) => setSiteId(e.target.value)}
-              required
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            >
-              <option value="">拠点を選択</option>
-              {sites.map((s) => (
-                <option key={s.siteId} value={s.siteId}>
-                  {s.siteName}（{s.siteId}）
-                </option>
-              ))}
-            </select>
-          </div>
+          {defaultSiteId && !isEdit ? (
+            <div className="space-y-2">
+              <Label>所属拠点</Label>
+              <p className="rounded-md border border-input bg-muted/50 px-3 py-2 text-sm">
+                {defaultSiteName ? `${defaultSiteName}（${defaultSiteId}）` : defaultSiteId}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Label htmlFor="unit-site">所属拠点 *</Label>
+              <select
+                id="unit-site"
+                value={siteId}
+                onChange={(e) => setSiteId(e.target.value)}
+                required
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <option value="">拠点を選択</option>
+                {sites.map((s) => (
+                  <option key={s.siteId} value={s.siteId}>
+                    {s.siteName}（{s.siteId}）
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="space-y-2">
             <Label htmlFor="unit-name">筐体名 *</Label>
             <Input
