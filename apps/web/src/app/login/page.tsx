@@ -6,12 +6,12 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Droplets } from "lucide-react"
-import { setTokens } from "@/lib/api-client"
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000/api"
+import { useAuth } from "@/lib/auth-context"
+import { ApiClientError } from "@/lib/api-client"
 
 export default function LoginPage() {
   const router = useRouter()
+  const { login } = useAuth()
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
@@ -24,25 +24,16 @@ export default function LoginPage() {
     setIsLoading(true)
 
     try {
-      const res = await fetch(`${API_BASE}/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      })
-
-      const body = await res.json()
-
-      if (!res.ok || body.result === "ng") {
-        setError(body.message ?? "ログインに失敗しました")
-        return
-      }
-
-      setTokens(body.data.access_token, body.data.refresh_token)
-      localStorage.setItem("sinmirai_admin", JSON.stringify(body.data.admin))
-
+      // AuthContext経由でログインし、admin stateを即時更新する
+      // （直接fetchするとContextに反映されず、サイドバーのロール判定がログイン直後に効かない）
+      await login(email, password)
       router.push("/")
-    } catch {
-      setError("サーバーに接続できませんでした")
+    } catch (err) {
+      if (err instanceof ApiClientError) {
+        setError(err.message)
+      } else {
+        setError("サーバーに接続できませんでした")
+      }
     } finally {
       setIsLoading(false)
     }

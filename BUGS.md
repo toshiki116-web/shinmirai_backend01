@@ -89,3 +89,20 @@
   - 修正後: 不正な `siteId` では 404 / 「拠点 ... が見つかりません」を返す想定。正常な `siteId` では従来どおり作成/更新成功。
   - 自動 API テストは未整備のため、curl/Swagger での手動確認対象として残す。
 - **再発防止策**: 外部キー制約に到達する前に service 層で参照先の存在を検証し、業務上の入力エラーとして 404 を返す。将来的には service 単体テストまたは API E2E で不正 `siteId` ケースを固定する。
+
+---
+
+## BUG-005: ログイン直後のダッシュボードでサイドバーに「ユーザー管理」が表示されない
+
+- **発生日**: 2026-06-24
+- **修正日**: 2026-06-24
+- **修正コミット**: 本コミット（`[fix] ... (BUG-005)`）
+- **症状**: master ロールでログインした直後のダッシュボードで、サイドバー「管理」グループに「ユーザー管理」が出ない。他ページへ遷移したり、ブラウザを更新すると表示される。
+- **原因**: ログインページ（`apps/web/src/app/login/page.tsx`）が AuthContext の `login()` を経由せず、直接 `fetch` → `setTokens` → `localStorage.setItem("sinmirai_admin", ...)` → `router.push("/")` を行っていた。一方サイドバーの「ユーザー管理」表示は AuthContext の `admin` state（`admin?.role === "master"`、`app-sidebar.tsx`）に依存する。`AuthProvider` が `admin` state を埋めるのはマウント時の `useEffect`（deps `[]`）一度のみで、`router.push` はクライアントサイド遷移のため再マウントされず `useEffect` も再実行されない。結果、ログイン直後は `admin` が `null` のままロール判定が `false` になり非表示。フルリロード（更新・ハードナビゲーション）で `useEffect` が再実行されると表示される、という挙動になっていた。
+- **修正内容**:
+  - `apps/web/src/app/login/page.tsx` — 直接 `fetch`/`setTokens`/`localStorage` 操作をやめ、`useAuth().login()` を呼ぶように変更。これにより `setAdmin(data.admin)` が同期的に走り、Context の `admin` state がログイン直後から正しく埋まる。エラー表示は `ApiClientError.message` を使用。未使用になった `setTokens` import と `API_BASE` 定数を削除。
+- **再現テスト**: フロントに自動テスト基盤が無いため手動再現/回帰手順で代替。
+  - **再現手順（修正前）**: master アカウントでログイン→そのままダッシュボード表示→サイドバーに「ユーザー管理」が無い。他ページ遷移またはブラウザ更新で出現。
+  - **修正後の確認**: master でログインした直後のダッシュボードでサイドバーに「ユーザー管理」が表示される。editor/viewer では従来どおり非表示。ログイン失敗時はサーバーのメッセージが表示される。
+  - **回帰ガード（静的）**: `login/page.tsx` に直接の `fetch(.../auth/login)` / `setTokens` / `localStorage.setItem("sinmirai_admin"` が残っていないこと（認証状態更新は AuthContext に一本化）。
+- **再発防止策**: 認証状態の更新経路を AuthContext の `login()` に一本化し、トークン保存・`admin` state 更新・localStorage 永続化を単一の責務にまとめた。直接 `fetch` する旧経路を排除することで、state とストレージの不整合（＝ロール依存UIのちらつき）を構造的に防ぐ。
