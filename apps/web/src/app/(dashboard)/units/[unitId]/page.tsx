@@ -7,12 +7,17 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { ArrowLeft, Pencil, Trash2, Wifi, WifiOff, Shield, Clock } from "lucide-react"
-import { statusLabels, formatDate, formatDateTime, type Unit } from "@/lib/mock-data"
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table"
+import { ArrowLeft, Pencil, Trash2, Wifi, WifiOff, Shield, Clock, Download, Loader2 } from "lucide-react"
+import { statusLabels, formatDate, formatDateTime, formatFileSize, type Unit } from "@/lib/mock-data"
 import { UnitDialog } from "@/components/dialogs/unit-dialog"
 import { DeleteDialog } from "@/components/dialogs/delete-dialog"
-import { api, ApiClientError } from "@/lib/api-client"
+import { api, ApiClientError, type UnitLogFile } from "@/lib/api-client"
 import { useAuth } from "@/lib/auth-context"
+
+const UNIT_LOG_LIMIT = 20
 
 type UnitAlert = {
   id: string
@@ -38,6 +43,12 @@ export default function UnitDetailPage() {
   const [licenseExpiredAt, setLicenseExpiredAt] = useState("")
   const [licenseError, setLicenseError] = useState("")
   const [isLicenseSaving, setIsLicenseSaving] = useState(false)
+  const [logs, setLogs] = useState<UnitLogFile[]>([])
+  const [logsTotal, setLogsTotal] = useState(0)
+  const [logsPage, setLogsPage] = useState(1)
+  const [isLogsLoading, setIsLogsLoading] = useState(false)
+  const [logsError, setLogsError] = useState("")
+  const [downloadingLogId, setDownloadingLogId] = useState<string | null>(null)
   const { admin } = useAuth()
   const canEdit = admin?.role === "master" || admin?.role === "editor"
 
@@ -61,6 +72,26 @@ export default function UnitDetailPage() {
     void fetchUnit()
   }, [fetchUnit])
 
+  const fetchLogs = useCallback(async () => {
+    setIsLogsLoading(true)
+    setLogsError("")
+    try {
+      const data = await api.getUnitLogs(unitId, { page: logsPage, limit: UNIT_LOG_LIMIT })
+      setLogs(data.items)
+      setLogsTotal(data.total)
+    } catch (err) {
+      setLogs([])
+      setLogsTotal(0)
+      setLogsError(err instanceof ApiClientError ? err.message : "ログファイル一覧の取得に失敗しました")
+    } finally {
+      setIsLogsLoading(false)
+    }
+  }, [unitId, logsPage])
+
+  useEffect(() => {
+    void fetchLogs()
+  }, [fetchLogs])
+
   async function handleLicenseSave() {
     setLicenseError("")
     setIsLicenseSaving(true)
@@ -74,6 +105,25 @@ export default function UnitDetailPage() {
       setLicenseError(err instanceof ApiClientError ? err.message : "ライセンス更新に失敗しました")
     } finally {
       setIsLicenseSaving(false)
+    }
+  }
+
+  async function handleDownloadLog(log: UnitLogFile) {
+    setLogsError("")
+    setDownloadingLogId(log.logFileId)
+    try {
+      const { downloadUrl } = await api.createUnitLogDownloadUrl(unitId, log.logFileId)
+      const a = document.createElement("a")
+      a.href = downloadUrl
+      a.download = log.fileName
+      a.rel = "noopener noreferrer"
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+    } catch (err) {
+      setLogsError(err instanceof ApiClientError ? err.message : "ログファイルのダウンロードURL発行に失敗しました")
+    } finally {
+      setDownloadingLogId(null)
     }
   }
 
@@ -95,6 +145,8 @@ export default function UnitDetailPage() {
 
   const st = statusLabels[unit.status]
   const alerts = (unit.deviceAlerts ?? []).slice(0, 5)
+  const logsTotalPages = Math.max(1, Math.ceil(logsTotal / UNIT_LOG_LIMIT))
+  const showLogsPagination = logsTotal > UNIT_LOG_LIMIT
 
   return (
     <div className="space-y-6">
@@ -271,6 +323,95 @@ export default function UnitDetailPage() {
                   </Badge>
                 </div>
               ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">ログファイル</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          {logsError && (
+            <div className="mx-6 mb-4 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+              {logsError}
+            </div>
+          )}
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>ファイル名</TableHead>
+                <TableHead className="w-[120px] text-right">サイズ</TableHead>
+                <TableHead className="w-[180px]">アップロード日時</TableHead>
+                <TableHead className="w-[140px] text-right">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {logs.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="py-10 text-center text-muted-foreground">
+                    {isLogsLoading ? "読み込み中..." : "ログファイルがありません"}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                logs.map((log) => {
+                  const isDownloading = downloadingLogId === log.logFileId
+                  return (
+                    <TableRow key={log.logFileId}>
+                      <TableCell className="max-w-[420px] truncate font-mono text-xs">
+                        {log.fileName}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs">
+                        {formatFileSize(String(log.fileSize))}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {formatDateTime(log.uploadedAt)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => { void handleDownloadLog(log) }}
+                          disabled={isDownloading}
+                        >
+                          {isDownloading ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <Download className="mr-2 h-4 w-4" />
+                          )}
+                          ダウンロード
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
+              )}
+            </TableBody>
+          </Table>
+          {showLogsPagination && (
+            <div className="flex items-center justify-end gap-3 border-t px-6 py-4">
+              <span className="text-sm text-muted-foreground">
+                {logsPage} / {logsTotalPages} ページ
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setLogsPage((page) => Math.max(1, page - 1))}
+                  disabled={isLogsLoading || logsPage <= 1}
+                >
+                  前へ
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setLogsPage((page) => Math.min(logsTotalPages, page + 1))}
+                  disabled={isLogsLoading || logsPage >= logsTotalPages}
+                >
+                  次へ
+                </Button>
+              </div>
             </div>
           )}
         </CardContent>

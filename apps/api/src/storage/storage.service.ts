@@ -177,11 +177,15 @@ export class StorageService {
     };
   }
 
-  async createLogDownloadUrl(s3Key: string): Promise<{ downloadUrl: string; expiresIn: number }> {
+  async createLogDownloadUrl(
+    s3Key: string,
+    fileName: string,
+  ): Promise<{ downloadUrl: string; expiresIn: number }> {
     this.ensureLogBucketConfigured();
     const command = new GetObjectCommand({
       Bucket: this.logsBucket,
       Key: s3Key,
+      ResponseContentDisposition: `attachment; filename="${fileName}"`,
     });
     const downloadUrl = await getS3SignedUrl(this.s3, command, {
       expiresIn: this.logDownloadUrlExpiresIn,

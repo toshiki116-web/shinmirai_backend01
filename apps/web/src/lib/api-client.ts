@@ -34,6 +34,21 @@ export type AdminUser = {
   updatedAt: string
 }
 
+export type UnitLogFile = {
+  logFileId: string
+  fileName: string
+  fileSize: number
+  contentType: string | null
+  uploadedAt: string
+}
+
+export type UnitLogsResponse = {
+  items: UnitLogFile[]
+  total: number
+  page: number
+  limit: number
+}
+
 export class ApiClientError extends Error {
   constructor(
     public status: number,
@@ -227,6 +242,16 @@ export const api = {
     return request<{ items: any[]; total: number; page: number; limit: number }>(`/admin/units?${q}`)
   },
   getUnit: (unitId: string) => request<any>(`/admin/units/${unitId}`),
+  getUnitLogs: (unitId: string, params?: { page?: number; limit?: number }) => {
+    const q = new URLSearchParams()
+    q.set("page", String(params?.page ?? 1))
+    q.set("limit", String(params?.limit ?? 20))
+    return request<UnitLogsResponse>(`/admin/units/${unitId}/logs?${q}`)
+  },
+  createUnitLogDownloadUrl: (unitId: string, logFileId: string) =>
+    request<{ downloadUrl: string; expiresIn: number }>(
+      `/admin/units/${unitId}/logs/${logFileId}/download-url`,
+    ),
   createUnit: (data: { siteId: string; unitName: string; connectionMode?: string }) =>
     request<any>("/admin/units", { method: "POST", body: JSON.stringify(data) }),
   updateUnit: (unitId: string, data: Partial<{ siteId: string; unitName: string; connectionMode: string }>) =>

@@ -191,7 +191,7 @@ export class UnitsService {
       throw new BadRequestException('Log file key does not match the unit');
     }
 
-    return this.storageService.createLogDownloadUrl(logFile.s3Key);
+    return this.storageService.createLogDownloadUrl(logFile.s3Key, logFile.fileName);
   }
 
   private async ensureSiteExists(siteId: string) {
