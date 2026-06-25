@@ -35,7 +35,8 @@ export class SitesService {
         take: query.limit,
         orderBy: { createdAt: 'desc' },
         include: {
-          _count: { select: { units: true } },
+          // 詳細画面と件数を一致させるため、論理削除済み筐体はカウントから除外する
+          _count: { select: { units: { where: { status: { not: 'deleted' } } } } },
         },
       }),
       this.prisma.site.count({ where }),

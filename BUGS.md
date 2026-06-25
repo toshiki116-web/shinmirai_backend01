@@ -119,3 +119,19 @@
 - **修正内容**: `apps/web/src/components/layout/header.tsx` のログアウト項目を `onSelect` → `onClick` に変更。併せて非機能の「プロフィール」項目（遷移先 `/profile` 未実装）を一旦削除し、未使用の `User` import を除去。
 - **再現テスト**: 自動テスト基盤が無いため手動再現/回帰で代替（指示書 `docs/features/fix-header-logout-plan.md` 参照）。
 - **再発防止策**: Base UI の `Menu.Item` は `onClick` を使うことを徹底（`onSelect` は Radix のAPIで Base UI では発火しない）。`header.tsx` に `onSelect` が残っていないことを静的grepで確認。
+
+---
+
+## BUG-007: 拠点管理画面の筐体数が実際の登録数より多く表示される
+
+- **発生日**: 2026-06-25
+- **修正日**: 2026-06-25
+- **修正コミット**: 本コミット（`[fix] ... (BUG-007)`）
+- **症状**: 拠点管理一覧（`/sites`）の「筐体数」列が、拠点詳細画面の実際の筐体数と一致しない。例: アーティフィス桜ノ宮（LOC-0003）は詳細画面で3台だが、一覧では5台と表示される。
+- **原因**: `apps/api/src/admin/sites/sites.service.ts` の一覧 `findAll` と詳細 `findOne` で論理削除（`status: 'deleted'`）の扱いが食い違っていた。詳細は `units: { where: { status: { not: 'deleted' } } }` で削除済みを除外するのに対し、一覧は `_count: { select: { units: true } }` とフィルタ無しで全筐体をカウントしていたため、論理削除済みの筐体まで件数に含まれていた（5台中2台が削除済み → 一覧5・詳細3）。
+- **修正内容**: `findAll` の `_count` にも詳細と同じ削除済み除外フィルタを付与。`_count: { select: { units: { where: { status: { not: 'deleted' } } } } }`（Prisma のフィルタ付きリレーションカウント）。フロント・スキーマ変更なし、API 1ファイルのみ。
+- **再現テスト**: `apps/api/src/admin/sites/sites.service.spec.ts` の `SitesService findAll unitCount (BUG-007)`
+  - `一覧の unitCount は論理削除済み筐体を除外した件数になる`（5台中2台削除済み → unitCount=3 を期待。修正前は5で失敗）
+  - `_count のリレーションカウントに削除済み除外フィルタが指定されている`（`findMany` 引数の `_count.select.units` が `{ where: { status: { not: 'deleted' } } }` であること。修正前は `true` で失敗）
+  - 修正前: 2件とも失敗（受領5/期待3、`true`/期待フィルタ）。修正後: 全18テスト pass。
+- **再発防止策**: 一覧と詳細で同一の「論理削除済み除外」条件を使う。集計（`_count`）にも明細取得と同じ `where` を適用することを徹底。spec テストでフィルタ条件をハードコード固定し、フィルタ漏れの再発を静的に検出できるようにした。
