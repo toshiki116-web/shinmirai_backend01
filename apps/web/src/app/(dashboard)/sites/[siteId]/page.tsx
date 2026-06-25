@@ -15,7 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { ArrowLeft, Pencil, Trash2, Box, Plus } from "lucide-react"
-import { statusLabels, formatDate, formatDateTime, type Site, type Unit } from "@/lib/mock-data"
+import { statusLabels, getEffectiveLicenseStatus, formatDate, formatDateTime, type Site, type Unit } from "@/lib/mock-data"
 import { SiteDialog } from "@/components/dialogs/site-dialog"
 import { DeleteDialog } from "@/components/dialogs/delete-dialog"
 import { UnitDialog } from "@/components/dialogs/unit-dialog"
@@ -215,9 +215,14 @@ export default function SiteDetailPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-center">
-                      <Badge variant={statusLabels[unit.licenseStatus]?.variant ?? "secondary"}>
-                        {statusLabels[unit.licenseStatus]?.label ?? unit.licenseStatus}
-                      </Badge>
+                      {(() => {
+                        const effectiveLicenseStatus = getEffectiveLicenseStatus(unit.licenseStatus, unit.licenseExpiredAt)
+                        return (
+                          <Badge variant={statusLabels[effectiveLicenseStatus]?.variant ?? "secondary"}>
+                            {statusLabels[effectiveLicenseStatus]?.label ?? effectiveLicenseStatus}
+                          </Badge>
+                        )
+                      })()}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {unit.lastSeenAt ? formatDateTime(unit.lastSeenAt) : "-"}

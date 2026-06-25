@@ -129,6 +129,72 @@ describe('DeviceService getContents thumbnails', () => {
   });
 });
 
+describe('DeviceService checkLicense (BUG-008)', () => {
+  function createService() {
+    return new DeviceService({} as any, {} as any);
+  }
+
+  it('keeps a valid license usable even after licenseExpiredAt has passed', async () => {
+    const service = createService();
+
+    await expect(
+      service.checkLicense({
+        ...device,
+        licenseStatus: 'valid',
+        licenseExpiredAt: new Date('2026-01-01T00:00:00.000Z'),
+      }),
+    ).resolves.toMatchObject({ licenseValid: true });
+  });
+
+  it('keeps a valid license usable before licenseExpiredAt', async () => {
+    const service = createService();
+
+    await expect(
+      service.checkLicense({
+        ...device,
+        licenseStatus: 'valid',
+        licenseExpiredAt: new Date('2099-01-01T00:00:00.000Z'),
+      }),
+    ).resolves.toMatchObject({ licenseValid: true });
+  });
+
+  it('keeps a valid license usable when licenseExpiredAt is not set', async () => {
+    const service = createService();
+
+    await expect(
+      service.checkLicense({
+        ...device,
+        licenseStatus: 'valid',
+        licenseExpiredAt: null,
+      }),
+    ).resolves.toMatchObject({ licenseValid: true });
+  });
+
+  it('rejects manually suspended licenses', async () => {
+    const service = createService();
+
+    await expect(
+      service.checkLicense({
+        ...device,
+        licenseStatus: 'suspended',
+        licenseExpiredAt: new Date('2099-01-01T00:00:00.000Z'),
+      }),
+    ).resolves.toMatchObject({ licenseValid: false });
+  });
+
+  it('rejects manually expired licenses', async () => {
+    const service = createService();
+
+    await expect(
+      service.checkLicense({
+        ...device,
+        licenseStatus: 'expired',
+        licenseExpiredAt: new Date('2099-01-01T00:00:00.000Z'),
+      }),
+    ).resolves.toMatchObject({ licenseValid: false });
+  });
+});
+
 describe('DeviceService log upload completion', () => {
   function createService(overrides?: {
     expectedKey?: string;

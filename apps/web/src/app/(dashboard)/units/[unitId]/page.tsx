@@ -11,7 +11,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table"
 import { ArrowLeft, Pencil, Trash2, Wifi, WifiOff, Shield, Clock, Download, Loader2 } from "lucide-react"
-import { statusLabels, formatDate, formatDateTime, formatFileSize, type Unit } from "@/lib/mock-data"
+import { statusLabels, getEffectiveLicenseStatus, formatDate, formatDateTime, formatFileSize, type Unit } from "@/lib/mock-data"
 import { UnitDialog } from "@/components/dialogs/unit-dialog"
 import { DeleteDialog } from "@/components/dialogs/delete-dialog"
 import { api, ApiClientError, type UnitLogFile } from "@/lib/api-client"
@@ -226,9 +226,14 @@ export default function UnitDetailPage() {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">ステータス</span>
-                <Badge variant={statusLabels[unit.licenseStatus]?.variant ?? "secondary"}>
-                  {statusLabels[unit.licenseStatus]?.label ?? unit.licenseStatus}
-                </Badge>
+                {(() => {
+                  const effectiveLicenseStatus = getEffectiveLicenseStatus(unit.licenseStatus, unit.licenseExpiredAt)
+                  return (
+                    <Badge variant={statusLabels[effectiveLicenseStatus]?.variant ?? "secondary"}>
+                      {statusLabels[effectiveLicenseStatus]?.label ?? effectiveLicenseStatus}
+                    </Badge>
+                  )
+                })()}
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">有効期限</span>

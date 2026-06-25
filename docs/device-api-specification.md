@@ -202,7 +202,7 @@ Authorization: Bearer <device_token>
 }
 ```
 
-- 判定: ライセンス状態が `valid` かつ有効期限が未経過（または未設定）の場合に `licenseValid: true`。
+- 判定: ライセンス状態が `valid` の場合に `licenseValid: true`。有効期限の超過だけでは停止しない（管理サイト上で「期限切れ」と表示するのみ）。実際の停止は管理者が `licenseStatus` を `suspended`/`expired` に変更したときのみ。`expiredAt` は情報提供として返す。(BUG-008)
 
 ---
 

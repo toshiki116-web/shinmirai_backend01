@@ -135,6 +135,25 @@ export const mockAnalytics: DailyAnalytics[] = (() => {
   return data
 })()
 
+/**
+ * ライセンス表示用の実効ステータスを導出する。
+ * 保存値が valid でも有効期限を過ぎていれば expired として表示する。
+ * DBは書き換えず、停止は管理者が手動で suspended/expired を選んだ場合のみ行う。
+ */
+export function getEffectiveLicenseStatus(
+  licenseStatus: Unit["licenseStatus"],
+  licenseExpiredAt: string | null,
+): Unit["licenseStatus"] {
+  if (
+    licenseStatus === "valid" &&
+    licenseExpiredAt &&
+    new Date(licenseExpiredAt) < new Date()
+  ) {
+    return "expired"
+  }
+  return licenseStatus
+}
+
 export function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("ja-JP", { year: "numeric", month: "2-digit", day: "2-digit" })
 }

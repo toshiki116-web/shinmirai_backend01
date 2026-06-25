@@ -117,9 +117,9 @@ export class DeviceService {
 
   /** ライセンス確認 */
   async checkLicense(device: UnitWithSite) {
-    const isValid =
-      device.licenseStatus === 'valid' &&
-      (!device.licenseExpiredAt || device.licenseExpiredAt > new Date());
+    // 有効期限の超過だけでは停止しない。停止は管理者が手動で
+    // licenseStatus を valid 以外に設定したときのみ行う。
+    const isValid = device.licenseStatus === 'valid';
 
     return {
       licenseValid: isValid,

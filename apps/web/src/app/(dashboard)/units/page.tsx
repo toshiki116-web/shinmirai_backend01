@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import { Plus, Search, Box, Wifi, WifiOff } from "lucide-react"
-import { statusLabels, formatDateTime, type Unit } from "@/lib/mock-data"
+import { statusLabels, getEffectiveLicenseStatus, formatDateTime, type Unit } from "@/lib/mock-data"
 import { UnitDialog } from "@/components/dialogs/unit-dialog"
 import { DeleteDialog } from "@/components/dialogs/delete-dialog"
 import { api, ApiClientError } from "@/lib/api-client"
@@ -169,9 +169,14 @@ export default function UnitsPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-center">
-                      <Badge variant={statusLabels[unit.licenseStatus]?.variant ?? "secondary"}>
-                        {statusLabels[unit.licenseStatus]?.label ?? unit.licenseStatus}
-                      </Badge>
+                      {(() => {
+                        const effectiveLicenseStatus = getEffectiveLicenseStatus(unit.licenseStatus, unit.licenseExpiredAt)
+                        return (
+                          <Badge variant={statusLabels[effectiveLicenseStatus]?.variant ?? "secondary"}>
+                            {statusLabels[effectiveLicenseStatus]?.label ?? effectiveLicenseStatus}
+                          </Badge>
+                        )
+                      })()}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {unit.lastSeenAt ? formatDateTime(unit.lastSeenAt) : "-"}

@@ -135,3 +135,13 @@
   - `_count のリレーションカウントに削除済み除外フィルタが指定されている`（`findMany` 引数の `_count.select.units` が `{ where: { status: { not: 'deleted' } } }` であること。修正前は `true` で失敗）
   - 修正前: 2件とも失敗（受領5/期待3、`true`/期待フィルタ）。修正後: 全18テスト pass。
 - **再発防止策**: 一覧と詳細で同一の「論理削除済み除外」条件を使う。集計（`_count`）にも明細取得と同じ `where` を適用することを徹底。spec テストでフィルタ条件をハードコード固定し、フィルタ漏れの再発を静的に検出できるようにした。
+---
+
+## BUG-008: ライセンス期限切れが管理画面で「有効」のまま表示され、筐体側も期限超過で自動停止していた
+- **発生日**: 2026-06-25
+- **修正日**: 2026-06-25
+- **症状**: 筐体詳細 `/units/UNIT-XXXX` で、保存値 `licenseStatus` が `valid` のライセンスは `licenseExpiredAt` を過ぎても管理画面上で「有効」のまま表示されていた。加えて、筐体向け `GET /api/device/license-check` は期限超過の `valid` ライセンスを `licenseValid: false` と返し、配信停止扱いにしていた。
+- **原因**: フロントのライセンスバッジが DB 保存値 `licenseStatus` をそのまま描画しており、表示時に `licenseExpiredAt` と突き合わせていなかった。筐体側の `DeviceService.checkLicense` も `licenseStatus === 'valid'` に加えて期限内であることを有効条件にしていたため、「期限切れは表示のみで、自動停止しない」という運用要件と矛盾していた。
+- **修正内容**: `apps/web/src/lib/mock-data.ts` に表示用の `getEffectiveLicenseStatus()` を追加し、筐体一覧・筐体詳細・拠点詳細の読み取り専用ライセンスバッジだけを実効ステータス表示へ差し替えた。編集用 `<select>` は DB 保存値を扱うため変更していない。`apps/api/src/device/device.service.ts` の `checkLicense` は `licenseStatus === 'valid'` のみで `licenseValid` を判定し、期限超過だけでは停止しないようにした。関連仕様書も BUG-008 後の判定へ更新した。
+- **再現テスト**: `apps/api/src/device/device.service.spec.ts` に `DeviceService checkLicense (BUG-008)` を追加。`valid` + 過去の `licenseExpiredAt` が `licenseValid: true` になること、未来・未設定の `valid` が true のままであること、手動 `suspended`/`expired` が false になることを固定した。
+- **再発防止策**: 保存値と表示用の実効ステータスを分離し、表示のみの期限切れ判定は `getEffectiveLicenseStatus()` に集約する。筐体停止条件は `licenseStatus` の手動変更だけに限定し、期限超過を自動停止条件へ戻さないよう API テストで保護する。
