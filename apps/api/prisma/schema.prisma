@@ -17,6 +17,7 @@ model Admin {
   role      String   @default("viewer")
   note      String?
   isActive  Boolean  @default(true) @map("is_active")
+  notifyOnIncident Boolean @default(false) @map("notify_on_incident")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -70,6 +71,7 @@ model Unit {
   licenseStatus String   @default("unknown") @map("license_status")
   licenseExpiredAt DateTime? @map("license_expired_at")
   lastSeenAt    DateTime? @map("last_seen_at")
+  lastIncidentNotifiedAt DateTime? @map("last_incident_notified_at")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 

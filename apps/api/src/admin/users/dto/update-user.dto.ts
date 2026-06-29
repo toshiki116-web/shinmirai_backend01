@@ -33,4 +33,14 @@ export class UpdateUserDto {
   })
   @IsBoolean({ message: '有効フラグはtrue/falseで指定してください' })
   isActive?: boolean;
+
+  @ApiPropertyOptional({ description: '不具合発生時の自動メール受信可否' })
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (value === true || value === 'true') return true;
+    if (value === false || value === 'false') return false;
+    return value;
+  })
+  @IsBoolean({ message: '通知フラグはtrue/falseで指定してください' })
+  notifyOnIncident?: boolean;
 }

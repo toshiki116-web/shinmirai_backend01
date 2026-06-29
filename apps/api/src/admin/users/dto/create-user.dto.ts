@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsIn, IsNotEmpty, IsOptional, IsString, Validate } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { IsBoolean, IsEmail, IsIn, IsNotEmpty, IsOptional, IsString, Validate } from 'class-validator';
 import { PasswordPolicyConstraint } from './password-policy.validator';
 
 export const ADMIN_ROLE_VALUES = ['master', 'editor', 'viewer'] as const;
@@ -28,4 +29,14 @@ export class CreateUserDto {
   @IsOptional()
   @IsString()
   note?: string;
+
+  @ApiPropertyOptional({ description: '不具合発生時の自動メール受信可否' })
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (value === true || value === 'true') return true;
+    if (value === false || value === 'false') return false;
+    return value;
+  })
+  @IsBoolean({ message: '通知フラグはtrue/falseで指定してください' })
+  notifyOnIncident?: boolean;
 }

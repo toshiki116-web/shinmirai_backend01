@@ -30,6 +30,7 @@ export type AdminUser = {
   role: AdminRole
   note: string | null
   isActive: boolean
+  notifyOnIncident: boolean
   createdAt: string
   updatedAt: string
 }
@@ -205,9 +206,9 @@ export const api = {
     return request<{ items: AdminUser[]; total: number; page: number; limit: number }>(`/admin/users?${q}`)
   },
   getUser: (id: string) => request<AdminUser>(`/admin/users/${id}`),
-  createUser: (data: { email: string; name: string; password: string; role: AdminRole; note?: string }) =>
+  createUser: (data: { email: string; name: string; password: string; role: AdminRole; note?: string; notifyOnIncident?: boolean }) =>
     request<AdminUser>("/admin/users", { method: "POST", body: JSON.stringify(data) }),
-  updateUser: (id: string, data: Partial<{ email: string; name: string; role: AdminRole; note: string; isActive: boolean }>) =>
+  updateUser: (id: string, data: Partial<{ email: string; name: string; role: AdminRole; note: string; isActive: boolean; notifyOnIncident: boolean }>) =>
     request<AdminUser>(`/admin/users/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   resetUserPassword: (id: string, password: string) =>
     request<AdminUser>(`/admin/users/${id}/password`, { method: "PATCH", body: JSON.stringify({ password }) }),

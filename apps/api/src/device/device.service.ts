@@ -1,6 +1,8 @@
 import { BadRequestException, Injectable, ConflictException, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { ContentThumbnailStatus, ContentUploadStatus, DeliveryType } from '@sinmirai/shared';
+import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { ActivateDto } from './dto/activate.dto';
@@ -19,19 +21,32 @@ type UnitWithSite = {
   deviceToken: string | null;
   connectionMode: string;
   status: string;
+  alertMessage: string | null;
   licenseStatus: string;
   licenseExpiredAt: Date | null;
+  lastIncidentNotifiedAt: Date | null;
   site: { siteId: string; siteName: string } | null;
 };
+
+const DEFAULT_INCIDENT_NOTIFY_COOLDOWN_MINUTES = 60;
 
 @Injectable()
 export class DeviceService {
   private readonly logger = new Logger(DeviceService.name);
+  private readonly incidentNotifyCooldownMinutes: number;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly storageService: StorageService,
-  ) {}
+    private readonly mailService: MailService,
+    configService: ConfigService,
+  ) {
+    const configuredMinutes = Number(configService.get<string>('INCIDENT_NOTIFY_COOLDOWN_MINUTES'));
+    this.incidentNotifyCooldownMinutes =
+      Number.isFinite(configuredMinutes) && configuredMinutes > 0
+        ? configuredMinutes
+        : DEFAULT_INCIDENT_NOTIFY_COOLDOWN_MINUTES;
+  }
 
   /** 筐体紐付け登録 */
   async activate(device: UnitWithSite, dto: ActivateDto) {
@@ -163,6 +178,9 @@ export class DeviceService {
           status: 'warning',
         },
       });
+      void this.notifyIncident(device, dto).catch((error) => {
+        this.logger.error(`Incident notification failed: ${this.formatError(error)}`);
+      });
     }
 
     this.logger.warn(`アラート受信: ${device.unitId} [${dto.level}] ${dto.alertType}`);
@@ -199,6 +217,59 @@ export class DeviceService {
       contentType: dto.contentType,
       fileSize: dto.fileSize,
     });
+  }
+
+  private async notifyIncident(device: UnitWithSite, dto: CreateAlertDto) {
+    const now = new Date();
+    const cutoff = new Date(
+      now.getTime() - this.incidentNotifyCooldownMinutes * 60 * 1000,
+    );
+    const acquired = await this.prisma.unit.updateMany({
+      where: {
+        unitId: device.unitId,
+        OR: [
+          { lastIncidentNotifiedAt: null },
+          { lastIncidentNotifiedAt: { lte: cutoff } },
+        ],
+      },
+      data: { lastIncidentNotifiedAt: now },
+    });
+
+    if (acquired.count !== 1) {
+      return;
+    }
+
+    const recipients = await this.prisma.admin.findMany({
+      where: {
+        notifyOnIncident: true,
+        isActive: true,
+      },
+      select: { email: true },
+    });
+
+    if (recipients.length === 0) {
+      return;
+    }
+
+    await this.mailService.sendIncidentAlert(
+      recipients.map((recipient) => recipient.email),
+      {
+        siteName: device.site?.siteName ?? null,
+        unitId: device.unitId,
+        unitName: device.unitName,
+        alertType: dto.alertType,
+        level: dto.level,
+        detail: dto.detail ?? dto.deviceName ?? null,
+        occurredAt: new Date(dto.occurredAt),
+      },
+    );
+  }
+
+  private formatError(error: unknown) {
+    if (error instanceof Error) {
+      return error.stack ?? error.message;
+    }
+    return String(error);
   }
 
   async completeLogUpload(device: UnitWithSite, dto: CompleteLogUploadDto) {

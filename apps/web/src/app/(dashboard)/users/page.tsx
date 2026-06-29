@@ -36,6 +36,7 @@ type UserFormState = {
   role: AdminRole
   note: string
   password: string
+  notifyOnIncident: boolean
 }
 
 const emptyForm: UserFormState = {
@@ -44,6 +45,7 @@ const emptyForm: UserFormState = {
   role: "viewer",
   note: "",
   password: "",
+  notifyOnIncident: false,
 }
 
 export default function UsersPage() {
@@ -107,6 +109,7 @@ export default function UsersPage() {
       role: user.role,
       note: user.note ?? "",
       password: "",
+      notifyOnIncident: user.notifyOnIncident,
     })
     setError("")
     setFormOpen(true)
@@ -123,6 +126,7 @@ export default function UsersPage() {
           name: form.name,
           role: form.role,
           note: form.note || "",
+          notifyOnIncident: form.notifyOnIncident,
         })
       } else {
         await api.createUser({
@@ -131,6 +135,7 @@ export default function UsersPage() {
           password: form.password,
           role: form.role,
           note: form.note || undefined,
+          notifyOnIncident: form.notifyOnIncident,
         })
       }
       setFormOpen(false)
@@ -319,6 +324,21 @@ export default function UsersPage() {
                   onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
                   required
                 />
+                <label
+                  htmlFor="notify-on-incident"
+                  className="flex cursor-pointer items-center gap-3 rounded-md border border-input px-3 py-2 text-sm"
+                >
+                  <input
+                    id="notify-on-incident"
+                    type="checkbox"
+                    checked={form.notifyOnIncident}
+                    onChange={(e) =>
+                      setForm((prev) => ({ ...prev, notifyOnIncident: e.target.checked }))
+                    }
+                    className="h-4 w-4 accent-primary"
+                  />
+                  <span>不具合発生時に自動メールを送る</span>
+                </label>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="user-name">名前 *</Label>

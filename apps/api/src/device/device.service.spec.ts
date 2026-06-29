@@ -9,9 +9,19 @@ const device = {
   deviceToken: null,
   connectionMode: 'online',
   status: 'normal',
+  alertMessage: null,
   licenseStatus: 'valid',
   licenseExpiredAt: null,
+  lastIncidentNotifiedAt: null,
   site: { siteId: 'LOC-0001', siteName: 'site' },
+};
+
+const mailService = {
+  sendIncidentAlert: jest.fn().mockResolvedValue(undefined),
+};
+
+const configService = {
+  get: jest.fn().mockReturnValue(undefined),
 };
 
 describe('DeviceService activate', () => {
@@ -29,7 +39,12 @@ describe('DeviceService activate', () => {
     const storageService = {};
 
     return {
-      service: new DeviceService(prisma as any, storageService as any),
+      service: new DeviceService(
+        prisma as any,
+        storageService as any,
+        mailService as any,
+        configService as any,
+      ),
       prisma,
     };
   }
@@ -111,7 +126,12 @@ describe('DeviceService getContents thumbnails', () => {
     const storageService = {
       signContentUrl: jest.fn((objectKey: string) => `https://cdn.example.test/${objectKey}`),
     };
-    const service = new DeviceService(prisma as any, storageService as any);
+    const service = new DeviceService(
+      prisma as any,
+      storageService as any,
+      mailService as any,
+      configService as any,
+    );
 
     const result = await service.getContents(device);
 
@@ -131,7 +151,7 @@ describe('DeviceService getContents thumbnails', () => {
 
 describe('DeviceService checkLicense (BUG-008)', () => {
   function createService() {
-    return new DeviceService({} as any, {} as any);
+    return new DeviceService({} as any, {} as any, mailService as any, configService as any);
   }
 
   it('keeps a valid license usable even after licenseExpiredAt has passed', async () => {
@@ -195,6 +215,118 @@ describe('DeviceService checkLicense (BUG-008)', () => {
   });
 });
 
+describe('DeviceService sendAlert incident notification', () => {
+  const alertDto = {
+    alertType: 'overheat',
+    deviceName: 'sensor',
+    detail: 'temperature is too high',
+    level: 'error',
+    occurredAt: '2026-06-29T00:00:00.000Z',
+  };
+
+  function createService(options?: {
+    acquiredCount?: number;
+    recipients?: { email: string }[];
+    mailRejects?: boolean;
+  }) {
+    const prisma = {
+      deviceAlert: {
+        create: jest.fn().mockResolvedValue({ id: 'alert-id' }),
+      },
+      unit: {
+        update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: options?.acquiredCount ?? 1 }),
+      },
+      admin: {
+        findMany: jest.fn().mockResolvedValue(options?.recipients ?? [{ email: 'admin@example.com' }]),
+      },
+    };
+    const mail = {
+      sendIncidentAlert: options?.mailRejects
+        ? jest.fn().mockRejectedValue(new Error('ses failed'))
+        : jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new DeviceService(
+      prisma as any,
+      {} as any,
+      mail as any,
+      configService as any,
+    );
+
+    return { service, prisma, mail };
+  }
+
+  async function flushAsyncNotifications() {
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+
+  it('sends mail for error alerts after acquiring the unit cooldown slot', async () => {
+    const { service, prisma, mail } = createService();
+
+    await expect(service.sendAlert(device, alertDto)).resolves.toEqual({ alertId: 'alert-id' });
+    await flushAsyncNotifications();
+
+    expect(prisma.unit.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { unitId: 'UNIT-1' },
+        data: expect.objectContaining({ status: 'warning' }),
+      }),
+    );
+    expect(prisma.unit.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          unitId: 'UNIT-1',
+          OR: expect.any(Array),
+        }),
+      }),
+    );
+    expect(prisma.admin.findMany).toHaveBeenCalledWith({
+      where: { notifyOnIncident: true, isActive: true },
+      select: { email: true },
+    });
+    expect(mail.sendIncidentAlert).toHaveBeenCalledWith(
+      ['admin@example.com'],
+      expect.objectContaining({
+        unitId: 'UNIT-1',
+        unitName: 'unit',
+        alertType: 'overheat',
+        level: 'error',
+      }),
+    );
+  });
+
+  it('does not send mail when the cooldown slot is already held', async () => {
+    const { service, prisma, mail } = createService({ acquiredCount: 0 });
+
+    await service.sendAlert(device, alertDto);
+    await flushAsyncNotifications();
+
+    expect(prisma.admin.findMany).not.toHaveBeenCalled();
+    expect(mail.sendIncidentAlert).not.toHaveBeenCalled();
+  });
+
+  it('does not send mail for warning alerts', async () => {
+    const { service, prisma, mail } = createService();
+
+    await service.sendAlert(device, { ...alertDto, level: 'warning' });
+    await flushAsyncNotifications();
+
+    expect(prisma.unit.update).not.toHaveBeenCalled();
+    expect(prisma.unit.updateMany).not.toHaveBeenCalled();
+    expect(mail.sendIncidentAlert).not.toHaveBeenCalled();
+  });
+
+  it('keeps the alert response successful when mail sending fails', async () => {
+    const { service, mail } = createService({ mailRejects: true });
+
+    await expect(service.sendAlert(device, alertDto)).resolves.toEqual({ alertId: 'alert-id' });
+    await flushAsyncNotifications();
+
+    expect(mail.sendIncidentAlert).toHaveBeenCalled();
+  });
+});
+
 describe('DeviceService log upload completion', () => {
   function createService(overrides?: {
     expectedKey?: string;
@@ -227,7 +359,12 @@ describe('DeviceService log upload completion', () => {
     };
 
     return {
-      service: new DeviceService(prisma as any, storageService as any),
+      service: new DeviceService(
+        prisma as any,
+        storageService as any,
+        mailService as any,
+        configService as any,
+      ),
       prisma,
       storageService,
     };

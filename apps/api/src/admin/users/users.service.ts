@@ -20,6 +20,7 @@ const userSelect = {
   role: true,
   note: true,
   isActive: true,
+  notifyOnIncident: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.AdminSelect;
@@ -93,6 +94,7 @@ export class UsersService {
           role: dto.role,
           note: dto.note,
           isActive: true,
+          notifyOnIncident: dto.notifyOnIncident ?? false,
         },
         select: userSelect,
       });
@@ -120,6 +122,7 @@ export class UsersService {
           role: dto.role,
           note: dto.note,
           isActive: dto.isActive,
+          notifyOnIncident: dto.notifyOnIncident,
         },
         select: userSelect,
       });
