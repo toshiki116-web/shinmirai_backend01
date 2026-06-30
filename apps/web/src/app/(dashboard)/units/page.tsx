@@ -13,13 +13,18 @@ import { Plus, Search, Box, Wifi, WifiOff } from "lucide-react"
 import { statusLabels, getEffectiveLicenseStatus, formatDateTime, type Unit } from "@/lib/mock-data"
 import { UnitDialog } from "@/components/dialogs/unit-dialog"
 import { DeleteDialog } from "@/components/dialogs/delete-dialog"
-import { api, ApiClientError } from "@/lib/api-client"
+import { api, ApiClientError, type UnitStatusCounts } from "@/lib/api-client"
 import { useAuth } from "@/lib/auth-context"
+
+const PAGE_SIZE = 20
+const DEFAULT_STATUS_COUNTS: UnitStatusCounts = { normal: 0, warning: 0, stop: 0, maintenance: 0 }
 
 export default function UnitsPage() {
   const [units, setUnits] = useState<Unit[]>([])
   const [total, setTotal] = useState(0)
   const [keyword, setKeyword] = useState("")
+  const [page, setPage] = useState(1)
+  const [statusCounts, setStatusCounts] = useState<UnitStatusCounts>(DEFAULT_STATUS_COUNTS)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const [createOpen, setCreateOpen] = useState(false)
@@ -32,19 +37,36 @@ export default function UnitsPage() {
     setIsLoading(true)
     setError("")
     try {
-      const data = await api.getUnits({ limit: 100, keyword: keyword || undefined })
+      const data = await api.getUnits({ page, limit: PAGE_SIZE, keyword: keyword || undefined })
+      const lastPage = Math.max(1, Math.ceil(data.total / PAGE_SIZE))
+      if (page > lastPage) {
+        setPage(lastPage)
+        return
+      }
       setUnits(data.items)
       setTotal(data.total)
+      setStatusCounts(data.statusCounts ?? DEFAULT_STATUS_COUNTS)
     } catch (err) {
       setError(err instanceof ApiClientError ? err.message : "筐体一覧の取得に失敗しました")
     } finally {
       setIsLoading(false)
     }
-  }, [keyword])
+  }, [page, keyword])
 
   useEffect(() => {
     void fetchUnits()
   }, [fetchUnits])
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const showPagination = total > PAGE_SIZE
+
+  function handleCreateSuccess() {
+    if (page === 1) {
+      void fetchUnits()
+    } else {
+      setPage(1)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -67,25 +89,25 @@ export default function UnitsPage() {
         <Card className="border-l-4 border-l-chart-2">
           <CardContent className="pt-4">
             <p className="text-sm text-muted-foreground">正常</p>
-            <p className="text-2xl font-bold">{units.filter((u) => u.status === "normal").length}</p>
+            <p className="text-2xl font-bold">{statusCounts.normal}</p>
           </CardContent>
         </Card>
         <Card className="border-l-4 border-l-[oklch(0.7_0.15_60)]">
           <CardContent className="pt-4">
             <p className="text-sm text-muted-foreground">警告</p>
-            <p className="text-2xl font-bold">{units.filter((u) => u.status === "warning").length}</p>
+            <p className="text-2xl font-bold">{statusCounts.warning}</p>
           </CardContent>
         </Card>
         <Card className="border-l-4 border-l-destructive">
           <CardContent className="pt-4">
             <p className="text-sm text-muted-foreground">停止</p>
-            <p className="text-2xl font-bold">{units.filter((u) => u.status === "stop").length}</p>
+            <p className="text-2xl font-bold">{statusCounts.stop}</p>
           </CardContent>
         </Card>
         <Card className="border-l-4 border-l-muted-foreground">
           <CardContent className="pt-4">
             <p className="text-sm text-muted-foreground">保守中</p>
-            <p className="text-2xl font-bold">{units.filter((u) => u.status === "maintenance").length}</p>
+            <p className="text-2xl font-bold">{statusCounts.maintenance}</p>
           </CardContent>
         </Card>
       </div>
@@ -102,13 +124,15 @@ export default function UnitsPage() {
             className="relative flex-1 max-w-sm"
             onSubmit={(e) => {
               e.preventDefault()
-              void fetchUnits()
             }}
           >
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={keyword}
-              onChange={(e) => setKeyword(e.target.value)}
+              onChange={(e) => {
+                setKeyword(e.target.value)
+                setPage(1)
+              }}
               placeholder="筐体ID・名前・PCUUIDで検索"
               className="pl-9"
             />
@@ -198,12 +222,37 @@ export default function UnitsPage() {
               )}
             </TableBody>
           </Table>
+          {showPagination && (
+            <div className="flex items-center justify-end gap-3 border-t px-6 py-4">
+              <span className="text-sm text-muted-foreground">
+                {page} / {totalPages} ページ（全{total}件）
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={isLoading || page <= 1}
+                >
+                  前へ
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={isLoading || page >= totalPages}
+                >
+                  次へ
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
       {canEdit && (
         <>
-          <UnitDialog open={createOpen} onOpenChange={setCreateOpen} onSuccess={fetchUnits} />
+          <UnitDialog open={createOpen} onOpenChange={setCreateOpen} onSuccess={handleCreateSuccess} />
           <UnitDialog open={!!editUnit} onOpenChange={(v) => !v && setEditUnit(null)} unit={editUnit} onSuccess={fetchUnits} />
           <DeleteDialog
             open={!!deleteUnit}

@@ -1,9 +1,11 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString } from 'class-validator';
+import { IsIn, IsOptional, IsString } from 'class-validator';
 import { PaginationDto } from '../../../common/dto/pagination.dto';
 
+export const UNIT_STATUSES = ['normal', 'warning', 'stop', 'maintenance'] as const;
+
 export class UnitQueryDto extends PaginationDto {
-  @ApiPropertyOptional({ description: '筐体ID・UUIDでキーワード検索' })
+  @ApiPropertyOptional({ description: '筐体ID・UUID・名称でキーワード検索' })
   @IsOptional()
   @IsString()
   keyword?: string;
@@ -13,8 +15,8 @@ export class UnitQueryDto extends PaginationDto {
   @IsString()
   siteId?: string;
 
-  @ApiPropertyOptional({ description: 'ステータス絞り込み', enum: ['normal', 'warning', 'stop', 'maintenance'] })
+  @ApiPropertyOptional({ description: 'ステータス絞り込み', enum: UNIT_STATUSES })
   @IsOptional()
-  @IsString()
+  @IsIn(UNIT_STATUSES)
   status?: string;
 }

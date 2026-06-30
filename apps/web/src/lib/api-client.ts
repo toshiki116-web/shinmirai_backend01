@@ -50,6 +50,13 @@ export type UnitLogsResponse = {
   limit: number
 }
 
+export type UnitStatusCounts = {
+  normal: number
+  warning: number
+  stop: number
+  maintenance: number
+}
+
 export class ApiClientError extends Error {
   constructor(
     public status: number,
@@ -240,7 +247,13 @@ export const api = {
     if (params?.keyword) q.set("keyword", params.keyword)
     if (params?.siteId) q.set("siteId", params.siteId)
     if (params?.status) q.set("status", params.status)
-    return request<{ items: any[]; total: number; page: number; limit: number }>(`/admin/units?${q}`)
+    return request<{
+      items: any[]
+      total: number
+      page: number
+      limit: number
+      statusCounts?: UnitStatusCounts
+    }>(`/admin/units?${q}`)
   },
   getUnit: (unitId: string) => request<any>(`/admin/units/${unitId}`),
   getUnitLogs: (unitId: string, params?: { page?: number; limit?: number }) => {

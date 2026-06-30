@@ -356,6 +356,32 @@ Authorization: Bearer <device_token>
 
 > **注意**: `deviceToken` はこのレスポンスには含まれない（作成時レスポンスのみ返却）。
 
+**GET /api/admin/units の追加レスポンス項目**
+
+`status` クエリの許可値は `normal` / `warning` / `stop` / `maintenance` のみ。`deleted` は指定できず、削除済み筐体は常に一覧・集計から除外される。
+
+一覧レスポンスはページング情報に加えて、検索条件（`keyword` / `siteId`）に一致する全件ベースのステータス集計 `statusCounts` を返す。`statusCounts` は `status` 絞り込みとページングを反映しない。
+
+```json
+{
+  "items": [
+    {
+      "unitId": "UNIT-A0B1C2D3",
+      "status": "normal"
+    }
+  ],
+  "total": 42,
+  "page": 1,
+  "limit": 20,
+  "statusCounts": {
+    "normal": 30,
+    "warning": 5,
+    "stop": 4,
+    "maintenance": 3
+  }
+}
+```
+
 #### GET /api/admin/units/:unitId
 
 詳細取得。`deviceAlerts`（直近10件）、`deviceLogFiles`（直近20件）を含む。

@@ -10,7 +10,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateUnitDto } from './dto/create-unit.dto';
 import { UpdateUnitDto } from './dto/update-unit.dto';
 import { UpdateLicenseDto } from './dto/update-license.dto';
-import { UnitQueryDto } from './dto/unit-query.dto';
+import { UnitQueryDto, UNIT_STATUSES } from './dto/unit-query.dto';
 import { Prisma } from '@prisma/client';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 import { StorageService } from '../../storage/storage.service';
@@ -25,12 +25,12 @@ export class UnitsService {
   ) {}
 
   async findAll(query: UnitQueryDto) {
-    const where: Prisma.UnitWhereInput = {
+    const baseWhere: Prisma.UnitWhereInput = {
       status: { not: 'deleted' },
     };
 
     if (query.keyword) {
-      where.OR = [
+      baseWhere.OR = [
         { unitId: { contains: query.keyword, mode: 'insensitive' } },
         { pcUuid: { contains: query.keyword, mode: 'insensitive' } },
         { unitName: { contains: query.keyword, mode: 'insensitive' } },
@@ -38,16 +38,17 @@ export class UnitsService {
     }
 
     if (query.siteId) {
-      where.siteId = query.siteId;
+      baseWhere.siteId = query.siteId;
     }
 
-    if (query.status) {
-      where.status = query.status;
+    const listWhere: Prisma.UnitWhereInput = { ...baseWhere };
+    if (query.status && UNIT_STATUSES.includes(query.status as (typeof UNIT_STATUSES)[number])) {
+      listWhere.status = query.status;
     }
 
-    const [items, total] = await Promise.all([
+    const [items, total, grouped] = await Promise.all([
       this.prisma.unit.findMany({
-        where,
+        where: listWhere,
         skip: query.skip,
         take: query.limit,
         orderBy: { createdAt: 'desc' },
@@ -55,14 +56,27 @@ export class UnitsService {
           site: { select: { siteId: true, siteName: true } },
         },
       }),
-      this.prisma.unit.count({ where }),
+      this.prisma.unit.count({ where: listWhere }),
+      this.prisma.unit.groupBy({
+        by: ['status'],
+        where: baseWhere,
+        _count: { _all: true },
+      }),
     ]);
+
+    const statusCounts = { normal: 0, warning: 0, stop: 0, maintenance: 0 };
+    for (const group of grouped) {
+      if (group.status in statusCounts) {
+        statusCounts[group.status as keyof typeof statusCounts] = group._count._all;
+      }
+    }
 
     return {
       items,
       total,
       page: query.page,
       limit: query.limit,
+      statusCounts,
     };
   }
 

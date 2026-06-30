@@ -149,3 +149,110 @@ describe('UnitsService update', () => {
     expect(logSpy).not.toHaveBeenCalled();
   });
 });
+
+describe('UnitsService findAll', () => {
+  function createFindAllService(options?: {
+    grouped?: Array<{ status: string; _count: { _all: number } }>;
+  }) {
+    const prisma = {
+      unit: {
+        findMany: jest.fn().mockResolvedValue([baseUnit]),
+        count: jest.fn().mockResolvedValue(1),
+        groupBy: jest.fn().mockResolvedValue(
+          options?.grouped ?? [{ status: 'normal', _count: { _all: 1 } }],
+        ),
+      },
+    };
+
+    return {
+      service: new UnitsService(prisma as any, {} as any),
+      prisma,
+    };
+  }
+
+  it('applies status only to the list query and excludes it from status aggregation', async () => {
+    const { service, prisma } = createFindAllService();
+
+    await service.findAll({ page: 1, limit: 20, skip: 0, status: 'normal' } as any);
+
+    expect(prisma.unit.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { status: 'normal' },
+      }),
+    );
+    expect(prisma.unit.count).toHaveBeenCalledWith({
+      where: { status: 'normal' },
+    });
+    expect(prisma.unit.groupBy).toHaveBeenCalledWith({
+      by: ['status'],
+      where: { status: { not: 'deleted' } },
+      _count: { _all: true },
+    });
+  });
+
+  it('applies keyword and siteId to both the list query and status aggregation', async () => {
+    const { service, prisma } = createFindAllService();
+
+    await service.findAll({
+      page: 1,
+      limit: 20,
+      skip: 0,
+      keyword: 'unit',
+      siteId: 'LOC-0001',
+    } as any);
+
+    const expectedWhere = {
+      status: { not: 'deleted' },
+      OR: [
+        { unitId: { contains: 'unit', mode: 'insensitive' } },
+        { pcUuid: { contains: 'unit', mode: 'insensitive' } },
+        { unitName: { contains: 'unit', mode: 'insensitive' } },
+      ],
+      siteId: 'LOC-0001',
+    };
+    expect(prisma.unit.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expectedWhere }),
+    );
+    expect(prisma.unit.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expectedWhere }),
+    );
+  });
+
+  it('keeps deleted units excluded even if status validation is bypassed', async () => {
+    const { service, prisma } = createFindAllService();
+
+    await service.findAll({ page: 1, limit: 20, skip: 0, status: 'deleted' } as any);
+
+    expect(prisma.unit.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { status: { not: 'deleted' } },
+      }),
+    );
+    expect(prisma.unit.count).toHaveBeenCalledWith({
+      where: { status: { not: 'deleted' } },
+    });
+    expect(prisma.unit.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { status: { not: 'deleted' } },
+      }),
+    );
+  });
+
+  it('returns zero-filled statusCounts for missing statuses', async () => {
+    const { service } = createFindAllService({
+      grouped: [
+        { status: 'normal', _count: { _all: 2 } },
+        { status: 'maintenance', _count: { _all: 1 } },
+      ],
+    });
+
+    const result = await service.findAll({ page: 1, limit: 20, skip: 0 } as any);
+
+    expect(result.statusCounts).toEqual({
+      normal: 2,
+      warning: 0,
+      stop: 0,
+      maintenance: 1,
+    });
+  });
+});
