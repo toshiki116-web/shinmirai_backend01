@@ -76,7 +76,7 @@ export class DeviceService {
   /** 配信コンテンツ一覧取得 */
   async getContents(device: UnitWithSite, language?: string) {
     if (!device.siteId) {
-      return { items: [] };
+      return { siteId: null, siteName: null, items: [] };
     }
 
     const where: Prisma.ContentWhereInput = {
@@ -114,6 +114,8 @@ export class DeviceService {
     });
 
     return {
+      siteId: device.siteId,
+      siteName: device.site?.siteName ?? null,
       items: contents.map((c) => ({
         contentId: c.contentId,
         contentName: c.contentName,
@@ -153,7 +155,11 @@ export class DeviceService {
       },
     });
 
-    return { received: true };
+    return {
+      received: true,
+      siteId: device.siteId ?? null,
+      siteName: device.site?.siteName ?? null,
+    };
   }
 
   /** アラート送信 */

@@ -10,6 +10,7 @@ import { CreateAlertDto } from './dto/alert.dto';
 import { DailyAnalyticsDto } from './dto/analytics.dto';
 import { CreateLogUploadUrlDto } from './dto/create-log-upload-url.dto';
 import { CompleteLogUploadDto } from './dto/complete-log-upload.dto';
+import { ContentsResponseDto, HeartbeatResponseDto } from './dto/device-response.dto';
 
 @ApiTags('筐体向けAPI')
 @ApiBearerAuth()
@@ -31,8 +32,8 @@ export class DeviceController {
   @Public()
   @UseGuards(DeviceAuthGuard)
   @Get('contents')
-  @ApiOperation({ summary: '配信コンテンツ一覧取得', description: '拠点IDに紐づく配信可能動画一覧を返却' })
-  @ApiResponse({ status: 200, description: 'コンテンツ一覧' })
+  @ApiOperation({ summary: '配信コンテンツ一覧取得', description: '拠点IDに紐づく配信可能動画一覧と現在の所属拠点(siteId/siteName)を返却' })
+  @ApiResponse({ status: 200, description: 'コンテンツ一覧', type: ContentsResponseDto })
   getContents(@CurrentDevice() device: any, @Query('language') language?: string) {
     return this.deviceService.getContents(device, language);
   }
@@ -49,8 +50,8 @@ export class DeviceController {
   @Public()
   @UseGuards(DeviceAuthGuard)
   @Post('heartbeat')
-  @ApiOperation({ summary: '稼働状況送信', description: '筐体の稼働状況・デバイスステータスを送信' })
-  @ApiResponse({ status: 200, description: '受信成功' })
+  @ApiOperation({ summary: '稼働状況送信', description: '筐体の稼働状況・デバイスステータスを送信し、現在の所属拠点(siteId/siteName)を返却' })
+  @ApiResponse({ status: 200, description: '受信成功', type: HeartbeatResponseDto })
   sendHeartbeat(@CurrentDevice() device: any, @Body() dto: HeartbeatDto) {
     return this.deviceService.sendHeartbeat(device, dto);
   }

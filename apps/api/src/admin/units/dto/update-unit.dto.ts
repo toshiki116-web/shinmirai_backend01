@@ -5,7 +5,7 @@ export class UpdateUnitDto {
   @ApiPropertyOptional({ description: '所属拠点ID' })
   @IsOptional()
   @IsString()
-  siteId?: string;
+  siteId?: string | null;
 
   @ApiPropertyOptional({ description: '筐体名' })
   @IsOptional()

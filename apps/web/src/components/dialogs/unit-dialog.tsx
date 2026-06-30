@@ -12,6 +12,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { api, ApiClientError } from "@/lib/api-client"
 import { type Site, type Unit } from "@/lib/mock-data"
@@ -33,6 +43,7 @@ export function UnitDialog({ open, onOpenChange, unit, defaultSiteId, defaultSit
   const [sites, setSites] = useState<Site[]>([])
   const [deviceToken, setDeviceToken] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [confirmSiteChangeOpen, setConfirmSiteChangeOpen] = useState(false)
 
   const [siteId, setSiteId] = useState("")
   const [unitName, setUnitName] = useState("")
@@ -46,6 +57,7 @@ export function UnitDialog({ open, onOpenChange, unit, defaultSiteId, defaultSit
       setError("")
       setDeviceToken(null)
       setCopied(false)
+      setConfirmSiteChangeOpen(false)
       void api.getSites({ limit: 100 })
         .then((data) => setSites(data.items))
         .catch((err) => {
@@ -55,8 +67,12 @@ export function UnitDialog({ open, onOpenChange, unit, defaultSiteId, defaultSit
     }
   }, [open, unit, defaultSiteId])
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  const originalSiteId = unit?.siteId ?? ""
+  const isLinkedSiteChange = isEdit && !!unit?.pcUuid && siteId !== originalSiteId
+  const oldSiteName = unit?.site?.siteName ?? (originalSiteId || "未割当")
+  const newSiteName = sites.find((s) => s.siteId === siteId)?.siteName ?? (siteId || "未割当")
+
+  async function saveUnit() {
     setError("")
     setIsLoading(true)
 
@@ -86,7 +102,17 @@ export function UnitDialog({ open, onOpenChange, unit, defaultSiteId, defaultSit
       setError(err instanceof ApiClientError ? err.message : "エラーが発生しました")
     } finally {
       setIsLoading(false)
+      setConfirmSiteChangeOpen(false)
     }
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (isLinkedSiteChange) {
+      setConfirmSiteChangeOpen(true)
+      return
+    }
+    void saveUnit()
   }
 
   function handleCopy() {
@@ -134,6 +160,7 @@ export function UnitDialog({ open, onOpenChange, unit, defaultSiteId, defaultSit
   }
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
@@ -219,5 +246,22 @@ export function UnitDialog({ open, onOpenChange, unit, defaultSiteId, defaultSit
         </form>
       </DialogContent>
     </Dialog>
+    <AlertDialog open={confirmSiteChangeOpen} onOpenChange={setConfirmSiteChangeOpen}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>所属拠点を変更しますか？</AlertDialogTitle>
+          <AlertDialogDescription>
+            所属拠点を「{oldSiteName}」から「{newSiteName}」へ変更します。この筐体で再生される拠点限定動画が切り替わります。端末への反映は次回通信まで時間がかかる場合があります。
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isLoading}>キャンセル</AlertDialogCancel>
+          <AlertDialogAction onClick={() => void saveUnit()} disabled={isLoading}>
+            {isLoading ? "更新中..." : "変更する"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   )
 }

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateUnitDto } from './dto/create-unit.dto';
@@ -11,6 +11,8 @@ import { StorageService } from '../../storage/storage.service';
 
 @Injectable()
 export class UnitsService {
+  private readonly logger = new Logger(UnitsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly storageService: StorageService,
@@ -103,13 +105,19 @@ export class UnitsService {
     };
   }
 
-  async update(unitId: string, dto: UpdateUnitDto) {
-    await this.ensureExists(unitId);
+  async update(unitId: string, dto: UpdateUnitDto, actorId: string) {
+    if (dto.siteId === null) {
+      throw new BadRequestException('siteId を null にはできません（未割当化は非対応）');
+    }
+
+    const existing = await this.ensureExists(unitId);
     if (dto.siteId) {
       await this.ensureSiteExists(dto.siteId);
     }
 
-    return this.prisma.unit.update({
+    const siteChanged = dto.siteId !== undefined && dto.siteId !== existing.siteId;
+
+    const updated = await this.prisma.unit.update({
       where: { unitId },
       data: {
         siteId: dto.siteId,
@@ -117,6 +125,16 @@ export class UnitsService {
         connectionMode: dto.connectionMode,
       },
     });
+
+    if (siteChanged) {
+      this.logger.log(
+        `筐体拠点変更: who=${actorId} unit=${unitId} ` +
+          `oldSiteId=${existing.siteId ?? 'なし'} newSiteId=${dto.siteId} ` +
+          `(紐付け済み=${!!updated.pcUuid})`,
+      );
+    }
+
+    return updated;
   }
 
   async updateLicense(unitId: string, dto: UpdateLicenseDto) {

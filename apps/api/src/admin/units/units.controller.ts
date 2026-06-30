@@ -5,8 +5,14 @@ import { CreateUnitDto } from './dto/create-unit.dto';
 import { UpdateUnitDto } from './dto/update-unit.dto';
 import { UpdateLicenseDto } from './dto/update-license.dto';
 import { UnitQueryDto } from './dto/unit-query.dto';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { PaginationDto } from '../../common/dto/pagination.dto';
+
+type RequestUser = {
+  id: string;
+  role: string;
+};
 
 @ApiTags('筐体管理')
 @ApiBearerAuth()
@@ -56,8 +62,12 @@ export class UnitsController {
   @ApiOperation({ summary: '筐体更新' })
   @ApiResponse({ status: 200, description: '更新成功' })
   @ApiResponse({ status: 404, description: '筐体が見つからない' })
-  update(@Param('unitId') unitId: string, @Body() dto: UpdateUnitDto) {
-    return this.unitsService.update(unitId, dto);
+  update(
+    @Param('unitId') unitId: string,
+    @Body() dto: UpdateUnitDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.unitsService.update(unitId, dto, user.id);
   }
 
   @Patch(':unitId/license')

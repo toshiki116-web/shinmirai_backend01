@@ -135,6 +135,8 @@ describe('DeviceService getContents thumbnails', () => {
 
     const result = await service.getContents(device);
 
+    expect(result.siteId).toBe('LOC-0001');
+    expect(result.siteName).toBe('site');
     expect(prisma.content.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         select: expect.objectContaining({ deliveryType: true }),
@@ -146,6 +148,61 @@ describe('DeviceService getContents thumbnails', () => {
       'https://cdn.example.test/contents/CNT-00001/thumbnails/thumb.jpg',
     );
     expect(result.items[1].thumbnailUrl).toBeNull();
+  });
+
+  it('returns the current site metadata with empty items for unassigned units', async () => {
+    const prisma = {
+      content: {
+        findMany: jest.fn(),
+      },
+    };
+    const service = new DeviceService(
+      prisma as any,
+      {} as any,
+      mailService as any,
+      configService as any,
+    );
+
+    await expect(service.getContents({ ...device, siteId: null, site: null })).resolves.toEqual({
+      siteId: null,
+      siteName: null,
+      items: [],
+    });
+    expect(prisma.content.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('DeviceService sendHeartbeat', () => {
+  it('returns the current site metadata after recording heartbeat', async () => {
+    const prisma = {
+      unit: {
+        update: jest.fn().mockResolvedValue({}),
+      },
+    };
+    const service = new DeviceService(
+      prisma as any,
+      {} as any,
+      mailService as any,
+      configService as any,
+    );
+
+    await expect(
+      service.sendHeartbeat(device, {
+        status: 'normal',
+        sentAt: '2026-06-30T00:00:00.000Z',
+      }),
+    ).resolves.toEqual({
+      received: true,
+      siteId: 'LOC-0001',
+      siteName: 'site',
+    });
+    expect(prisma.unit.update).toHaveBeenCalledWith({
+      where: { unitId: 'UNIT-1' },
+      data: {
+        status: 'normal',
+        lastSeenAt: new Date('2026-06-30T00:00:00.000Z'),
+      },
+    });
   });
 });
 
