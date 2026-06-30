@@ -61,6 +61,7 @@ export class UnitsController {
   @Roles('master', 'editor')
   @ApiOperation({ summary: '筐体更新' })
   @ApiResponse({ status: 200, description: '更新成功' })
+  @ApiResponse({ status: 409, description: '所属拠点は変更不可' })
   @ApiResponse({ status: 404, description: '筐体が見つからない' })
   update(
     @Param('unitId') unitId: string,

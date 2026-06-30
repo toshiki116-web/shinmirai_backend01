@@ -1,4 +1,4 @@
-import { BadRequestException, Logger } from '@nestjs/common';
+import { BadRequestException, ConflictException, Logger, NotFoundException } from '@nestjs/common';
 import { UnitsService } from './units.service';
 
 const baseUnit = {
@@ -20,8 +20,8 @@ const baseUnit = {
 
 describe('UnitsService update', () => {
   function createService(options?: {
-    existing?: typeof baseUnit;
-    updated?: typeof baseUnit;
+    existing?: typeof baseUnit | (Omit<typeof baseUnit, 'siteId'> & { siteId: string | null });
+    updated?: typeof baseUnit | (Omit<typeof baseUnit, 'siteId'> & { siteId: string | null });
     site?: { siteId: string; status: string };
   }) {
     const existing = options?.existing ?? baseUnit;
@@ -64,6 +64,18 @@ describe('UnitsService update', () => {
     expect(prisma.unit.update).not.toHaveBeenCalled();
   });
 
+  it('rejects changing an already assigned site before looking up the requested site', async () => {
+    const { service, prisma } = createService();
+
+    await expect(
+      service.update('UNIT-1', { siteId: 'LOC-0002' }, 'admin-1'),
+    ).rejects.toThrow(ConflictException);
+
+    expect(prisma.site.findUnique).not.toHaveBeenCalled();
+    expect(prisma.unit.update).not.toHaveBeenCalled();
+    expect(logSpy).not.toHaveBeenCalled();
+  });
+
   it('keeps the current site when siteId is omitted', async () => {
     const { service, prisma } = createService();
 
@@ -81,24 +93,59 @@ describe('UnitsService update', () => {
     expect(logSpy).not.toHaveBeenCalled();
   });
 
-  it('logs actor and old/new sites only when siteId changes', async () => {
+  it('allows the same siteId without logging', async () => {
+    const { service, prisma } = createService();
+
+    await service.update('UNIT-1', { siteId: 'LOC-0001' }, 'admin-1');
+
+    expect(prisma.site.findUnique).toHaveBeenCalledWith({ where: { siteId: 'LOC-0001' } });
+    expect(prisma.unit.update).toHaveBeenCalledWith({
+      where: { unitId: 'UNIT-1' },
+      data: {
+        siteId: 'LOC-0001',
+        unitName: undefined,
+        connectionMode: undefined,
+      },
+    });
+    expect(logSpy).not.toHaveBeenCalled();
+  });
+
+  it('allows assigning a site once when the unit is unassigned', async () => {
+    const unassigned = { ...baseUnit, siteId: null };
+    const assigned = { ...baseUnit, siteId: 'LOC-0002' };
     const { service, prisma } = createService({
-      updated: { ...baseUnit, siteId: 'LOC-0002' },
+      existing: unassigned,
+      updated: assigned,
     });
 
     await service.update('UNIT-1', { siteId: 'LOC-0002' }, 'admin-1');
 
     expect(prisma.site.findUnique).toHaveBeenCalledWith({ where: { siteId: 'LOC-0002' } });
+    expect(prisma.unit.update).toHaveBeenCalledWith({
+      where: { unitId: 'UNIT-1' },
+      data: {
+        siteId: 'LOC-0002',
+        unitName: undefined,
+        connectionMode: undefined,
+      },
+    });
     expect(logSpy).toHaveBeenCalledWith(
-      expect.stringContaining('who=admin-1 unit=UNIT-1 oldSiteId=LOC-0001 newSiteId=LOC-0002'),
+      expect.stringContaining('筐体拠点割当: who=admin-1 unit=UNIT-1 siteId=LOC-0002'),
     );
   });
 
-  it('does not log when siteId is unchanged', async () => {
-    const { service } = createService();
+  it('rejects assigning a missing site to an unassigned unit', async () => {
+    const { service, prisma } = createService({
+      existing: { ...baseUnit, siteId: null },
+      site: { siteId: 'LOC-404', status: 'deleted' },
+    });
 
-    await service.update('UNIT-1', { siteId: 'LOC-0001' }, 'admin-1');
+    await expect(
+      service.update('UNIT-1', { siteId: 'LOC-404' }, 'admin-1'),
+    ).rejects.toThrow(NotFoundException);
 
+    expect(prisma.site.findUnique).toHaveBeenCalledWith({ where: { siteId: 'LOC-404' } });
+    expect(prisma.unit.update).not.toHaveBeenCalled();
     expect(logSpy).not.toHaveBeenCalled();
   });
 });

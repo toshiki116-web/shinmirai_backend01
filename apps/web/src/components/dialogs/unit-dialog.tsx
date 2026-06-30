@@ -12,16 +12,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { api, ApiClientError } from "@/lib/api-client"
 import { type Site, type Unit } from "@/lib/mock-data"
@@ -43,7 +33,6 @@ export function UnitDialog({ open, onOpenChange, unit, defaultSiteId, defaultSit
   const [sites, setSites] = useState<Site[]>([])
   const [deviceToken, setDeviceToken] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
-  const [confirmSiteChangeOpen, setConfirmSiteChangeOpen] = useState(false)
 
   const [siteId, setSiteId] = useState("")
   const [unitName, setUnitName] = useState("")
@@ -57,7 +46,6 @@ export function UnitDialog({ open, onOpenChange, unit, defaultSiteId, defaultSit
       setError("")
       setDeviceToken(null)
       setCopied(false)
-      setConfirmSiteChangeOpen(false)
       void api.getSites({ limit: 100 })
         .then((data) => setSites(data.items))
         .catch((err) => {
@@ -67,10 +55,10 @@ export function UnitDialog({ open, onOpenChange, unit, defaultSiteId, defaultSit
     }
   }, [open, unit, defaultSiteId])
 
-  const originalSiteId = unit?.siteId ?? ""
-  const isLinkedSiteChange = isEdit && !!unit?.pcUuid && siteId !== originalSiteId
-  const oldSiteName = unit?.site?.siteName ?? (originalSiteId || "未割当")
-  const newSiteName = sites.find((s) => s.siteId === siteId)?.siteName ?? (siteId || "未割当")
+  const hasAssignedSite = isEdit && !!unit?.siteId
+  const assignedSiteLabel = unit?.site?.siteName
+    ? `${unit.site.siteName}（${unit.site.siteId}）`
+    : unit?.siteId ?? "未割当"
 
   async function saveUnit() {
     setError("")
@@ -78,11 +66,15 @@ export function UnitDialog({ open, onOpenChange, unit, defaultSiteId, defaultSit
 
     try {
       if (isEdit) {
-        await api.updateUnit(unit!.unitId, {
-          siteId: siteId || undefined,
+        const payload: Partial<{ siteId: string; unitName: string; connectionMode: string }> = {
           unitName,
           connectionMode: connectionMode as "online" | "offline",
-        })
+        }
+        if (!unit?.siteId && siteId) {
+          payload.siteId = siteId
+        }
+
+        await api.updateUnit(unit!.unitId, payload)
         onOpenChange(false)
         onSuccess()
       } else {
@@ -102,16 +94,11 @@ export function UnitDialog({ open, onOpenChange, unit, defaultSiteId, defaultSit
       setError(err instanceof ApiClientError ? err.message : "エラーが発生しました")
     } finally {
       setIsLoading(false)
-      setConfirmSiteChangeOpen(false)
     }
   }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (isLinkedSiteChange) {
-      setConfirmSiteChangeOpen(true)
-      return
-    }
     void saveUnit()
   }
 
@@ -160,7 +147,6 @@ export function UnitDialog({ open, onOpenChange, unit, defaultSiteId, defaultSit
   }
 
   return (
-    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
@@ -182,14 +168,24 @@ export function UnitDialog({ open, onOpenChange, unit, defaultSiteId, defaultSit
                 {defaultSiteName ? `${defaultSiteName}（${defaultSiteId}）` : defaultSiteId}
               </p>
             </div>
+          ) : hasAssignedSite ? (
+            <div className="space-y-2">
+              <Label>所属拠点</Label>
+              <p className="rounded-md border border-input bg-muted/50 px-3 py-2 text-sm">
+                {assignedSiteLabel}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                ※所属拠点は登録時に確定し、変更できません。
+              </p>
+            </div>
           ) : (
             <div className="space-y-2">
-              <Label htmlFor="unit-site">所属拠点 *</Label>
+              <Label htmlFor="unit-site">所属拠点{isEdit ? "" : " *"}</Label>
               <select
                 id="unit-site"
                 value={siteId}
                 onChange={(e) => setSiteId(e.target.value)}
-                required
+                required={!isEdit}
                 className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               >
                 <option value="">拠点を選択</option>
@@ -246,22 +242,5 @@ export function UnitDialog({ open, onOpenChange, unit, defaultSiteId, defaultSit
         </form>
       </DialogContent>
     </Dialog>
-    <AlertDialog open={confirmSiteChangeOpen} onOpenChange={setConfirmSiteChangeOpen}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>所属拠点を変更しますか？</AlertDialogTitle>
-          <AlertDialogDescription>
-            所属拠点を「{oldSiteName}」から「{newSiteName}」へ変更します。この筐体で再生される拠点限定動画が切り替わります。端末への反映は次回通信まで時間がかかる場合があります。
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={isLoading}>キャンセル</AlertDialogCancel>
-          <AlertDialogAction onClick={() => void saveUnit()} disabled={isLoading}>
-            {isLoading ? "更新中..." : "変更する"}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-    </>
   )
 }

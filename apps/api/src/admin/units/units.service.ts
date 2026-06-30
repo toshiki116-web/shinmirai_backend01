@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateUnitDto } from './dto/create-unit.dto';
@@ -111,11 +117,17 @@ export class UnitsService {
     }
 
     const existing = await this.ensureExists(unitId);
+
+    if (dto.siteId !== undefined && existing.siteId && dto.siteId !== existing.siteId) {
+      throw new ConflictException('所属拠点は変更できません');
+    }
+
     if (dto.siteId) {
       await this.ensureSiteExists(dto.siteId);
     }
 
-    const siteChanged = dto.siteId !== undefined && dto.siteId !== existing.siteId;
+    const isInitialAssignment =
+      dto.siteId !== undefined && !existing.siteId && !!dto.siteId;
 
     const updated = await this.prisma.unit.update({
       where: { unitId },
@@ -126,12 +138,8 @@ export class UnitsService {
       },
     });
 
-    if (siteChanged) {
-      this.logger.log(
-        `筐体拠点変更: who=${actorId} unit=${unitId} ` +
-          `oldSiteId=${existing.siteId ?? 'なし'} newSiteId=${dto.siteId} ` +
-          `(紐付け済み=${!!updated.pcUuid})`,
-      );
+    if (isInitialAssignment) {
+      this.logger.log(`筐体拠点割当: who=${actorId} unit=${unitId} siteId=${dto.siteId}`);
     }
 
     return updated;
