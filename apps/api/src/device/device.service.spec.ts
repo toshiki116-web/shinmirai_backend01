@@ -173,10 +173,14 @@ describe('DeviceService getContents thumbnails', () => {
 });
 
 describe('DeviceService sendHeartbeat', () => {
-  it('returns the current site metadata after recording heartbeat', async () => {
+  const sentAt = '2026-06-30T00:00:00.000Z';
+
+  // count=0 は「書き込み時点でDBがmaintenance（またはdeleted）だった」ことを表す
+  function createService(overwrittenCount: number) {
     const prisma = {
       unit: {
         update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: overwrittenCount }),
       },
     };
     const service = new DeviceService(
@@ -186,24 +190,56 @@ describe('DeviceService sendHeartbeat', () => {
       configService as any,
     );
 
-    await expect(
-      service.sendHeartbeat(device, {
-        status: 'normal',
-        sentAt: '2026-06-30T00:00:00.000Z',
-      }),
-    ).resolves.toEqual({
+    return { service, prisma };
+  }
+
+  it('returns the current site metadata after recording heartbeat', async () => {
+    const { service } = createService(1);
+
+    await expect(service.sendHeartbeat(device, { status: 'normal', sentAt })).resolves.toEqual({
       received: true,
       siteId: 'LOC-0001',
       siteName: 'site',
     });
-    expect(prisma.unit.update).toHaveBeenCalledWith({
-      where: { unitId: 'UNIT-1' },
-      data: {
-        status: 'normal',
-        lastSeenAt: new Date('2026-06-30T00:00:00.000Z'),
-      },
-    });
   });
+
+  it.each(['normal', 'warning', 'maintenance'])(
+    'overwrites the status with %s when the unit is not under maintenance',
+    async (status) => {
+      const { service, prisma } = createService(1);
+
+      await service.sendHeartbeat(device, { status, sentAt });
+
+      expect(prisma.unit.updateMany).toHaveBeenCalledTimes(1);
+      expect(prisma.unit.updateMany).toHaveBeenCalledWith({
+        where: { unitId: 'UNIT-1', status: { notIn: ['maintenance', 'deleted'] } },
+        data: { status, lastSeenAt: new Date(sentAt) },
+      });
+      expect(prisma.unit.update).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['normal', 'maintenance'])(
+    'updates only lastSeenAt when the unit is under maintenance (status=%s)',
+    async (status) => {
+      const { service, prisma } = createService(0);
+
+      await service.sendHeartbeat(device, { status, sentAt });
+
+      expect(prisma.unit.updateMany).toHaveBeenCalledTimes(2);
+      expect(prisma.unit.updateMany).toHaveBeenNthCalledWith(1, {
+        where: { unitId: 'UNIT-1', status: { notIn: ['maintenance', 'deleted'] } },
+        data: { status, lastSeenAt: new Date(sentAt) },
+      });
+      expect(prisma.unit.updateMany).toHaveBeenNthCalledWith(2, {
+        where: { unitId: 'UNIT-1' },
+        data: { lastSeenAt: new Date(sentAt) },
+      });
+      // statusを書く呼び出しがフォールバック側に一切ないこと（保守中維持の担保）
+      expect(prisma.unit.updateMany.mock.calls[1][0].data).not.toHaveProperty('status');
+      expect(prisma.unit.update).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe('DeviceService checkLicense (BUG-008)', () => {
@@ -349,6 +385,20 @@ describe('DeviceService sendAlert incident notification', () => {
         unitName: 'unit',
         alertType: 'overheat',
         level: 'error',
+      }),
+    );
+  });
+
+  it('still switches a maintenance unit to warning for critical alerts', async () => {
+    const { service, prisma } = createService();
+
+    await service.sendAlert({ ...device, status: 'maintenance' }, { ...alertDto, level: 'critical' });
+    await flushAsyncNotifications();
+
+    expect(prisma.unit.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { unitId: 'UNIT-1' },
+        data: expect.objectContaining({ status: 'warning' }),
       }),
     );
   });

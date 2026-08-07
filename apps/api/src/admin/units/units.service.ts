@@ -149,6 +149,9 @@ export class UnitsService {
         siteId: dto.siteId,
         unitName: dto.unitName,
         connectionMode: dto.connectionMode,
+        status: dto.status,
+        // 「正常」への明示的な変更は管理者による警告の確認操作とみなし、未確認アラート文言を消す
+        ...(dto.status === 'normal' ? { alertMessage: null } : {}),
       },
     });
 

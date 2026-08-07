@@ -134,6 +134,50 @@ describe('UnitsService update', () => {
     );
   });
 
+  it('writes maintenance status without clearing alertMessage', async () => {
+    const { service, prisma } = createService();
+
+    await service.update('UNIT-1', { status: 'maintenance' }, 'admin-1');
+
+    expect(prisma.unit.update).toHaveBeenCalledWith({
+      where: { unitId: 'UNIT-1' },
+      data: {
+        siteId: undefined,
+        unitName: undefined,
+        connectionMode: undefined,
+        status: 'maintenance',
+      },
+    });
+    expect(prisma.unit.update.mock.calls[0][0].data).not.toHaveProperty('alertMessage');
+  });
+
+  it('clears alertMessage when the status is set back to normal', async () => {
+    const { service, prisma } = createService();
+
+    await service.update('UNIT-1', { status: 'normal' }, 'admin-1');
+
+    expect(prisma.unit.update).toHaveBeenCalledWith({
+      where: { unitId: 'UNIT-1' },
+      data: {
+        siteId: undefined,
+        unitName: undefined,
+        connectionMode: undefined,
+        status: 'normal',
+        alertMessage: null,
+      },
+    });
+  });
+
+  it('leaves the status untouched when it is omitted', async () => {
+    const { service, prisma } = createService();
+
+    await service.update('UNIT-1', { unitName: 'renamed' }, 'admin-1');
+
+    const data = prisma.unit.update.mock.calls[0][0].data;
+    expect(data.status).toBeUndefined();
+    expect(data).not.toHaveProperty('alertMessage');
+  });
+
   it('rejects assigning a missing site to an unassigned unit', async () => {
     const { service, prisma } = createService({
       existing: { ...baseUnit, siteId: null },

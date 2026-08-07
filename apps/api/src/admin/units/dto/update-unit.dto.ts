@@ -17,6 +17,13 @@ export class UpdateUnitDto {
   @IsIn(['online', 'offline'])
   connectionMode?: string;
 
+  @ApiPropertyOptional({ description: 'ステータス', enum: ['normal', 'maintenance'] })
+  @IsOptional()
+  @IsIn(['normal', 'maintenance'], {
+    message: 'ステータスはnormal、maintenanceのいずれかを指定してください',
+  })
+  status?: string;
+
   @ApiPropertyOptional({ description: '備考' })
   @IsOptional()
   @IsString()

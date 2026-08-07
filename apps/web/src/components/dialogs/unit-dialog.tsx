@@ -37,12 +37,17 @@ export function UnitDialog({ open, onOpenChange, unit, defaultSiteId, defaultSit
   const [siteId, setSiteId] = useState("")
   const [unitName, setUnitName] = useState("")
   const [connectionMode, setConnectionMode] = useState("online")
+  // 生値をそのまま保持する（warning/stopは正規化せず、どちらのトグルも非選択にする）
+  const [status, setStatus] = useState("normal")
+  const [statusTouched, setStatusTouched] = useState(false)
 
   useEffect(() => {
     if (open) {
       setSiteId(unit?.siteId ?? defaultSiteId ?? "")
       setUnitName(unit?.unitName ?? "")
       setConnectionMode(unit?.connectionMode ?? "online")
+      setStatus(unit?.status ?? "normal")
+      setStatusTouched(false)
       setError("")
       setDeviceToken(null)
       setCopied(false)
@@ -66,9 +71,13 @@ export function UnitDialog({ open, onOpenChange, unit, defaultSiteId, defaultSit
 
     try {
       if (isEdit) {
-        const payload: Partial<{ siteId: string; unitName: string; connectionMode: string }> = {
+        const payload: Partial<{ siteId: string; unitName: string; connectionMode: string; status: string }> = {
           unitName,
           connectionMode: connectionMode as "online" | "offline",
+        }
+        // トグルを操作したときだけ送る（warning/stopの生値がAPIの許容値に弾かれるのを避ける）
+        if (statusTouched) {
+          payload.status = status as "normal" | "maintenance"
         }
         if (!unit?.siteId && siteId) {
           payload.siteId = siteId
@@ -231,6 +240,28 @@ export function UnitDialog({ open, onOpenChange, unit, defaultSiteId, defaultSit
               ))}
             </div>
           </div>
+          {isEdit && (
+            <div className="space-y-2">
+              <Label>ステータス</Label>
+              <div className="flex gap-2">
+                {["normal", "maintenance"].map((s) => (
+                  <Badge
+                    key={s}
+                    variant={status === s ? "default" : "outline"}
+                    className="cursor-pointer px-4 py-1.5"
+                    onClick={() => { setStatus(s); setStatusTouched(true) }}
+                  >
+                    {s === "normal" ? "正常" : "保守中"}
+                  </Badge>
+                ))}
+              </div>
+              {unit?.alertMessage && (
+                <p className="text-xs text-muted-foreground">
+                  ※「正常」を選択して更新すると、表示中の警告メッセージを確認済みとしてクリアします。
+                </p>
+              )}
+            </div>
+          )}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               キャンセル

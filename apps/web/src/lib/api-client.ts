@@ -268,7 +268,7 @@ export const api = {
     ),
   createUnit: (data: { siteId: string; unitName: string; connectionMode?: string }) =>
     request<any>("/admin/units", { method: "POST", body: JSON.stringify(data) }),
-  updateUnit: (unitId: string, data: Partial<{ siteId: string; unitName: string; connectionMode: string }>) =>
+  updateUnit: (unitId: string, data: Partial<{ siteId: string; unitName: string; connectionMode: string; status: string }>) =>
     request<any>(`/admin/units/${unitId}`, { method: "PATCH", body: JSON.stringify(data) }),
   updateUnitLicense: (unitId: string, data: { licenseStatus: string; licenseExpiredAt?: string | null }) =>
     request<any>(`/admin/units/${unitId}/license`, { method: "PATCH", body: JSON.stringify(data) }),

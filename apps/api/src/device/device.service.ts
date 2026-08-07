@@ -147,13 +147,22 @@ export class DeviceService {
 
   /** 稼働状況送信 */
   async sendHeartbeat(device: UnitWithSite, dto: HeartbeatDto) {
-    await this.prisma.unit.update({
-      where: { unitId: device.unitId },
-      data: {
-        status: dto.status,
-        lastSeenAt: new Date(dto.sentAt),
-      },
+    const sentAt = new Date(dto.sentAt);
+
+    // 書き込み時点でmaintenance（またはdeleted）でない行に限りstatusを更新する。
+    // 条件評価と書き込みを単一のUPDATE文にまとめ、管理画面のPATCHとの競合窓をなくす
+    const overwritten = await this.prisma.unit.updateMany({
+      where: { unitId: device.unitId, status: { notIn: ['maintenance', 'deleted'] } },
+      data: { status: dto.status, lastSeenAt: sentAt },
     });
+
+    if (overwritten.count === 0) {
+      // 保守中（または削除済み）の間はstatusに触れず、最終確認日時のみ更新する
+      await this.prisma.unit.updateMany({
+        where: { unitId: device.unitId },
+        data: { lastSeenAt: sentAt },
+      });
+    }
 
     return {
       received: true,
