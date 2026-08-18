@@ -193,6 +193,32 @@ describe('DeviceService sendHeartbeat', () => {
     return { service, prisma };
   }
 
+  // Prisma updateMany の semantics を status/lastSeenAt に限って再現するフェイク。
+  // where.status.notIn に現在値が含まれる場合は count: 0 を返し data を適用しない。
+  function createStatefulService(initialStatus: string) {
+    const row = { status: initialStatus, lastSeenAt: null as Date | null };
+    const updateMany = jest.fn(async ({ where, data }: any) => {
+      if (where.status?.notIn?.includes(row.status)) return { count: 0 };
+      if (data.status !== undefined) row.status = data.status;
+      row.lastSeenAt = data.lastSeenAt;
+      return { count: 1 };
+    });
+    const prisma = {
+      unit: {
+        update: jest.fn().mockResolvedValue({}),
+        updateMany,
+      },
+    };
+    const service = new DeviceService(
+      prisma as any,
+      {} as any,
+      mailService as any,
+      configService as any,
+    );
+
+    return { service, row, updateMany };
+  }
+
   it('returns the current site metadata after recording heartbeat', async () => {
     const { service } = createService(1);
 
@@ -212,7 +238,7 @@ describe('DeviceService sendHeartbeat', () => {
 
       expect(prisma.unit.updateMany).toHaveBeenCalledTimes(1);
       expect(prisma.unit.updateMany).toHaveBeenCalledWith({
-        where: { unitId: 'UNIT-1', status: { notIn: ['maintenance', 'deleted'] } },
+        where: { unitId: 'UNIT-1', status: { notIn: ['warning', 'maintenance', 'deleted'] } },
         data: { status, lastSeenAt: new Date(sentAt) },
       });
       expect(prisma.unit.update).not.toHaveBeenCalled();
@@ -228,7 +254,7 @@ describe('DeviceService sendHeartbeat', () => {
 
       expect(prisma.unit.updateMany).toHaveBeenCalledTimes(2);
       expect(prisma.unit.updateMany).toHaveBeenNthCalledWith(1, {
-        where: { unitId: 'UNIT-1', status: { notIn: ['maintenance', 'deleted'] } },
+        where: { unitId: 'UNIT-1', status: { notIn: ['warning', 'maintenance', 'deleted'] } },
         data: { status, lastSeenAt: new Date(sentAt) },
       });
       expect(prisma.unit.updateMany).toHaveBeenNthCalledWith(2, {
@@ -240,6 +266,48 @@ describe('DeviceService sendHeartbeat', () => {
       expect(prisma.unit.update).not.toHaveBeenCalled();
     },
   );
+
+  it('keeps warning status after a normal heartbeat while recording lastSeenAt (BUG-009)', async () => {
+    const { service, row } = createStatefulService('warning');
+
+    await service.sendHeartbeat(device, { status: 'normal', sentAt });
+
+    expect(row.status).toBe('warning');
+    expect(row.lastSeenAt).toEqual(new Date(sentAt));
+  });
+
+  it('records a stop heartbeat when the unit is in a writable status', async () => {
+    const { service, row } = createStatefulService('normal');
+
+    await service.sendHeartbeat(device, { status: 'stop', sentAt });
+
+    expect(row.status).toBe('stop');
+    expect(row.lastSeenAt).toEqual(new Date(sentAt));
+  });
+
+  it.each(['error', 'critical'])('normalizes %s heartbeat status to warning', async (status) => {
+    const { service, prisma } = createService(1);
+
+    await service.sendHeartbeat(device, { status, sentAt });
+
+    expect(prisma.unit.updateMany).toHaveBeenCalledWith({
+      where: { unitId: 'UNIT-1', status: { notIn: ['warning', 'maintenance', 'deleted'] } },
+      data: { status: 'warning', lastSeenAt: new Date(sentAt) },
+    });
+  });
+
+  it('records only lastSeenAt for an unknown heartbeat status', async () => {
+    const { service, prisma } = createService(1);
+
+    await service.sendHeartbeat(device, { status: 'running', sentAt });
+
+    expect(prisma.unit.updateMany).toHaveBeenCalledTimes(1);
+    expect(prisma.unit.updateMany).toHaveBeenCalledWith({
+      where: { unitId: 'UNIT-1' },
+      data: { lastSeenAt: new Date(sentAt) },
+    });
+    expect(prisma.unit.updateMany.mock.calls[0][0].data).not.toHaveProperty('status');
+  });
 });
 
 describe('DeviceService checkLicense (BUG-008)', () => {

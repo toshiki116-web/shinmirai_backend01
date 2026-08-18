@@ -145,3 +145,15 @@
 - **修正内容**: `apps/web/src/lib/mock-data.ts` に表示用の `getEffectiveLicenseStatus()` を追加し、筐体一覧・筐体詳細・拠点詳細の読み取り専用ライセンスバッジだけを実効ステータス表示へ差し替えた。編集用 `<select>` は DB 保存値を扱うため変更していない。`apps/api/src/device/device.service.ts` の `checkLicense` は `licenseStatus === 'valid'` のみで `licenseValid` を判定し、期限超過だけでは停止しないようにした。関連仕様書も BUG-008 後の判定へ更新した。
 - **再現テスト**: `apps/api/src/device/device.service.spec.ts` に `DeviceService checkLicense (BUG-008)` を追加。`valid` + 過去の `licenseExpiredAt` が `licenseValid: true` になること、未来・未設定の `valid` が true のままであること、手動 `suspended`/`expired` が false になることを固定した。
 - **再発防止策**: 保存値と表示用の実効ステータスを分離し、表示のみの期限切れ判定は `getEffectiveLicenseStatus()` に集約する。筐体停止条件は `licenseStatus` の手動変更だけに限定し、期限超過を自動停止条件へ戻さないよう API テストで保護する。
+
+---
+
+## BUG-009: エラー状態の筐体が heartbeat で「正常」表示に戻る
+
+- **発生日**: 2026-08-18
+- **修正日**: 2026-08-18
+- **症状**: 筐体がエラー状態（error/critical アラート発生）でも、筐体詳細のステータスが「正常」表示のままになる。
+- **原因**: `sendAlert` が設定した `warning` を、次の heartbeat の `normal` 自己申告が上書きしていた。heartbeat の上書きガードが `maintenance`/`deleted` のみを対象としており、さらに heartbeat status の値検証がないため非正規値がそのまま保存され得た。
+- **修正内容**: heartbeat による status 更新を `warning`/`maintenance`/`deleted` 以外の行だけに限定し、`error`/`critical` を `warning` に正規化した。未知の status は警告ログを出し、status を変更せず `lastSeenAt` のみ更新する。
+- **再現テスト**: `apps/api/src/device/device.service.spec.ts` の `keeps warning status after a normal heartbeat while recording lastSeenAt (BUG-009)`。
+- **再発防止策**: heartbeat の status 書き込みを条件付き `updateMany` 1文に保ち、warning の解除は管理画面からの明示操作に限定する。未知の自己申告値でも最終通信日時の更新は継続する。

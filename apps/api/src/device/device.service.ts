@@ -29,6 +29,7 @@ type UnitWithSite = {
 };
 
 const DEFAULT_INCIDENT_NOTIFY_COOLDOWN_MINUTES = 60;
+const HEARTBEAT_WRITABLE_STATUSES = ['normal', 'warning', 'stop', 'maintenance'];
 
 @Injectable()
 export class DeviceService {
@@ -149,20 +150,39 @@ export class DeviceService {
   async sendHeartbeat(device: UnitWithSite, dto: HeartbeatDto) {
     const sentAt = new Date(dto.sentAt);
 
-    // 書き込み時点でmaintenance（またはdeleted）でない行に限りstatusを更新する。
-    // 条件評価と書き込みを単一のUPDATE文にまとめ、管理画面のPATCHとの競合窓をなくす
-    const overwritten = await this.prisma.unit.updateMany({
-      where: { unitId: device.unitId, status: { notIn: ['maintenance', 'deleted'] } },
-      data: { status: dto.status, lastSeenAt: sentAt },
-    });
+    // error/critical はアラートレベル相当の自己申告とみなし warning として扱う
+    const normalizedStatus =
+      dto.status === 'error' || dto.status === 'critical' ? 'warning' : dto.status;
 
-    if (overwritten.count === 0) {
-      // 保守中（または削除済み）の間はstatusに触れず、最終確認日時のみ更新する
-      await this.prisma.unit.updateMany({
-        where: { unitId: device.unitId },
-        data: { lastSeenAt: sentAt },
+    if (HEARTBEAT_WRITABLE_STATUSES.includes(normalizedStatus)) {
+      // 書き込み時点でwarning/maintenance/deletedでない行に限りstatusを更新する。
+      // 条件評価と書き込みを単一のUPDATE文にまとめ、管理画面のPATCHとの競合窓をなくす
+      const overwritten = await this.prisma.unit.updateMany({
+        where: {
+          unitId: device.unitId,
+          status: { notIn: ['warning', 'maintenance', 'deleted'] },
+        },
+        data: { status: normalizedStatus, lastSeenAt: sentAt },
       });
+
+      if (overwritten.count > 0) {
+        return {
+          received: true,
+          siteId: device.siteId ?? null,
+          siteName: device.site?.siteName ?? null,
+        };
+      }
+    } else {
+      this.logger.warn(
+        `未知のheartbeatステータスを受信: unit=${device.unitId} status=${dto.status}（statusは更新せずlastSeenAtのみ更新）`,
+      );
     }
+
+    // warning/maintenance/deleted中、または未知の値の間はstatusに触れず、最終確認日時のみ更新する
+    await this.prisma.unit.updateMany({
+      where: { unitId: device.unitId },
+      data: { lastSeenAt: sentAt },
+    });
 
     return {
       received: true,
