@@ -1,5 +1,5 @@
-FROM node:22-alpine AS builder
-RUN corepack enable && corepack prepare pnpm@latest --activate
+FROM node:22.23.4-alpine AS builder
+RUN corepack enable && corepack prepare pnpm@12.15.0 --activate
 WORKDIR /app
 
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* tsconfig.base.json ./
@@ -14,7 +14,7 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 WORKDIR /app/apps/web
 RUN pnpm build
 
-FROM node:22-alpine AS runner
+FROM node:22.23.4-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV HOSTNAME=0.0.0.0
