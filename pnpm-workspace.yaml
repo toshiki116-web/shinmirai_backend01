@@ -11,3 +11,8 @@ allowBuilds:
   prisma: true
   sharp: true
   unrs-resolver: true
+# 依存先が版を完全固定していて、通常の更新では修正版にならない脆弱性への対処（2026-10 security-check）
+overrides:
+  multer@2.4.0: 2.5.0          # @nestjs/platform-express@11.2.8 が固定（CVE-2026-113872）
+  js-yaml@5.3.0: 5.4.1         # @nestjs/swagger@11.4.7 が固定（GHSA-r3ph-w7gj-g6xm）
+  deepmerge-ts@7.1.5: 8.0.0    # @prisma/config@6.19.3 が固定（CVE-2026-40345）
