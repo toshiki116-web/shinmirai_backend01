@@ -84,7 +84,7 @@
 
 | 順 | 操作 |
 |---|---|
-| 1 | `tokenHash` でトークン行を引き、`adminId` を得る（無ければ 401） |
+| 1 | `tokenHash` でトークン行を引き、`adminId` を得る（無ければ 401）。**この読み取りだけはトランザクションの外で、通常の `this.prisma.refreshToken.findUnique` を使う**（ここでは adminId が分かればよく、有効性は手順3で判定し直す。§4-2 のテストで処理を一時停止させる場所にもなる） |
 | 2 | その `adminId` の `admins` 行を `FOR UPDATE` でロック |
 | 3 | 旧トークンの条件付き失効: `updateMany where { id, revokedAt: null, expiresAt: { gt: now } }` → `{ revokedAt: now }`。**更新件数が1でなければ 401**（リセットで失効済み、または同じトークンの二重使用） |
 | 4 | `admins` を読み直し、`isActive` が false なら 401 |
@@ -170,14 +170,31 @@
 - ファイルは `apps/api/test/auth-reset-race.e2e-spec.ts`。既存の `test/jest-e2e.json` で実行する（e2e のテストファイルはまだ1つも無い）。
 - テスト用の管理者は、テストの中で作って後始末する。seed の管理者は使わない。
 
+**競合はテスト側で決まった順序に並べて再現する**。繰り返し回数に頼らない（reset には bcrypt の計算があるため、refresh が毎回先に終わり、修正前でも競合が起きないことがありうる）。本番コードには、テスト専用のフックや引数を足さない。
+
+一時停止の作り方（ゲート = テスト内で作る、外から解決できる Promise）:
+- **login**: `jest.mock('bcrypt', ...)` で `compare` を、本物の結果を返した後にゲートを待つ関数に差し替える。`hash` は本物のままにする。
+  - `jest.spyOn(bcrypt, 'compare')` は使わない。`esModuleInterop: true` のため、`auth.service.ts` の `import * as bcrypt` はモジュールのコピーを参照し、テスト側の spy が届かない【確認済: tsconfig.base.json】。
+- **refresh**: Nest アプリから取り出した `PrismaService` の `refreshToken.findUnique` を `jest.spyOn` で包み、本物の結果を返した後にゲートを待たせる。
+  - 修正前も修正後も、refresh の最初の読み取りはこのメソッドなので（§2(b) 手順1）、同じ場所で止められる。
+- どちらも、「一時停止の位置まで到達した」ことを別の Promise で通知させ、テストはそれを待ってから次に進む。到達しないままテストが通ることを防ぐため、到達の通知を待つ処理には5秒のタイムアウトを付け、超えたらテストを失敗させる。
+- spy が `PrismaService` のモデルに届かない場合（Prisma の実装の都合で包めないなど）は、本番コードを変えて対処せず、報告して止める。
+
 | ケース | 手順 | 期待 |
 |---|---|---|
-| refresh × reset | 有効なリフレッシュトークンを用意し、`refresh` と `resetPassword` を `Promise.all` で同時に実行する。これを **50回** 繰り返す | どの回も、両方が終わった時点で `refresh_tokens` に `adminId` が一致し `revokedAt IS NULL` の行が **0件** |
-| login × reset | 旧パスワードでの `login` と `resetPassword` を同時に実行する。これを50回繰り返す | 同上（0件）。login は成功か 401 のどちらか |
-| 二重 refresh | 同じリフレッシュトークンで `refresh` を2つ同時に実行する | 成功は1つだけ。もう1つは 401 |
+| refresh × reset | ① 有効なリフレッシュトークンを用意する ② `refresh` を開始し、`findUnique` の直後で一時停止したことを確認する ③ `resetPassword` を**最後まで実行する** ④ ゲートを開けて refresh を再開する ⑤ `Promise.allSettled` で両方の終了を待つ | reset は成功（fulfilled）。refresh は **401（UnauthorizedException で rejected）**。`refresh_tokens` で `adminId` が一致し `revokedAt IS NULL` の行が **0件** |
+| login × reset | ① 旧パスワードで `login` を開始し、`compare` の直後で一時停止したことを確認する ② `resetPassword` を最後まで実行する ③ 再開する ④ `allSettled` で待つ | reset は成功。login は **401**。未失効トークンは **0件** |
+| 二重 refresh | 同じリフレッシュトークンで `refresh` を2つ同時に開始し、`allSettled` で待つ | 成功は1つだけ、もう1つは 401。未失効トークンは1件（成功した側の新トークン） |
 | 直列の基本確認 | resetPassword の後に、旧リフレッシュトークンで refresh する | 401 |
 
-- 同時実行のテストは、修正前のコードで実行すると「0件」が崩れる回があることを1度確認し、報告に書くこと（テストが競合を検出できる証拠として）。崩れなかった場合は、繰り返し回数を増やしたことと、その結果を書く。
+判定の共通ルール:
+- `Promise.all` は使わない（一方が 401 で rejected になると、もう一方の終了を待たずに失敗し、「両方が終わった時点の DB」を検証できないため）。必ず `Promise.allSettled` を使う。
+- rejected の理由は、`UnauthorizedException` であることまで確認する。ほかの例外（DB エラー、タイムアウトなど）はテスト失敗とする。
+
+修正前のコードでも失敗することの確認（テストが競合を検出できる証拠）:
+- テストファイルだけを、修正前のコミット（本タスクの着手直前）に当てて実行する。
+- refresh × reset と login × reset の2ケースで、**401 にならず成功し、未失効トークンが1件以上残る**ことを確認し、その出力を報告に貼る。
+- 修正前でも合格してしまった場合は、一時停止の位置が間違っているので、本タスクを完了扱いにしない。
 
 ### 4-3. ログイン制限の結合テスト（単一インスタンス）
 `supertest` で Nest アプリを1つ立ち上げ、`trust proxy=1` を設定した状態で行う。supertest は直接接続なので、`X-Forwarded-For` の値がそのままクライアント IP として扱われる。これを ALB が付ける末尾の値の代わりに使う。
