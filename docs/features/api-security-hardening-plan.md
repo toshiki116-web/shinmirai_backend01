@@ -54,16 +54,58 @@
   → 漏えいしたリフレッシュトークンが、リセット後も最大7日間（`REFRESH_TOKEN_TTL_DAYS`）使える。
 - 無効化（`update` で `isActive=false`、`remove`）は、`AuthService.refresh` と `JwtStrategy.validate` の両方が `isActive` を見るため、すでに遮断されている。**本タスクでは触らない**。
 
+- `AuthService.refresh` は、トークンの有効性確認（`findUnique`）を**トランザクションの外**で行い、その後の配列 `$transaction` で旧トークンの失効と新トークンの作成をしている。`login` も、bcrypt で照合してから、トランザクションを使わずに新トークンを作成している。
+  → リセット側だけを transaction にしても、次の順序で実行されるとリセット後も使えるトークンが残る。
+  - refresh: 「有効と判定 → リセットが全件失効 → 新トークンを作成」
+  - login: 「旧パスワードで照合 → リセット → トークンを作成」
+
+### 方針【方針】
+**同じ管理者についての「トークンの発行」と「パスワードリセット」を、`admins` 行のロックで直列化する**。
+- PostgreSQL の行ロック（`SELECT ... FOR UPDATE`）を、Prisma の対話型トランザクション（`$transaction(async (tx) => ...)`）の中で取る。
+- 有効性の確認は、**ロックを取った後に**同じトランザクション内でやり直す。PostgreSQL の既定の分離レベル（READ COMMITTED）では、ロック取得後の文はコミット済みの最新状態を読むため、先に終わったリセットの結果が見える。
+- 不採用案: `admins` に `passwordChangedAt` 列を追加し、トークン発行時刻と比べる案。マイグレーションが必要で、比較を入れ忘れた経路から漏れるため採らない。
+- 不採用案: 分離レベル SERIALIZABLE。失敗時のリトライ処理が別途必要になるため採らない。
+
+共通の処理を `AuthService` に置くこと（private で可。`UsersService` から呼ぶ必要はない）。
+ロックを取る SQL は1つに決める: `SELECT id FROM admins WHERE id = $1 FOR UPDATE`（`tx.$queryRaw` のタグ付きテンプレートで値を渡す。文字列連結で組み立てない）。
+
 ### 変更
-`resetPassword` を `prisma.$transaction([...])` に変え、次の2つを一括で実行する。
+**(a) `UsersService.resetPassword`** — 対話型トランザクションで、次の順に実行する。
 
-| テーブル | 操作 | 条件 |
-|---|---|---|
-| `admins` | update `password` | `id = :id` |
-| `refresh_tokens` | updateMany `revokedAt = now` | `adminId = :id AND revokedAt IS NULL` |
+| 順 | テーブル | 操作 | 条件 |
+|---|---|---|---|
+| 1 | `admins` | `FOR UPDATE` でロック | `id = :id` |
+| 2 | `admins` | update `password` | `id = :id` |
+| 3 | `refresh_tokens` | updateMany `revokedAt = now` | `adminId = :id AND revokedAt IS NULL` |
 
+- bcrypt のハッシュ計算はトランザクションの**前**に行う（ロックを持ったまま時間のかかる計算をしない）。
+
+**(b) `AuthService.refresh`** — 対話型トランザクションで、次の順に実行する。
+
+| 順 | 操作 |
+|---|---|
+| 1 | `tokenHash` でトークン行を引き、`adminId` を得る（無ければ 401） |
+| 2 | その `adminId` の `admins` 行を `FOR UPDATE` でロック |
+| 3 | 旧トークンの条件付き失効: `updateMany where { id, revokedAt: null, expiresAt: { gt: now } }` → `{ revokedAt: now }`。**更新件数が1でなければ 401**（リセットで失効済み、または同じトークンの二重使用） |
+| 4 | `admins` を読み直し、`isActive` が false なら 401 |
+| 5 | 新トークンを作成 |
+
+- 手順3の条件付き更新で、同じリフレッシュトークンの同時二重使用も1回だけに絞られる。
+
+**(c) `AuthService.login`** — bcrypt の照合はトランザクションの**外**で行い（重いため）、トークンを作る部分だけを対話型トランザクションにする。
+
+| 順 | 操作 |
+|---|---|
+| 1 | `admins` 行を `FOR UPDATE` でロック |
+| 2 | `admins` を読み直し、**`password` のハッシュ文字列が照合に使ったものと一致し、かつ `isActive` が true** であることを確認する。違えば 401（照合している間にリセットされた） |
+| 3 | リフレッシュトークンを作成 |
+
+- 401 のメッセージは、既存と同じ「メールアドレスまたはパスワードが正しくありません」にする（リセットと競合したことを外部に知らせない）。
+
+共通:
 - 物理削除はしない（`AuthService.logout` と同じく `revokedAt` で失効させる方式に揃える）。
-- 戻り値は今と同じ `userSelect` の形を保つ（web の画面が使っているため）。
+- 戻り値の形（login・refresh のレスポンス、resetPassword の `userSelect`）は変えない。
+- `logout` は変えない（失効させる方向の操作なので、競合しても安全側に倒れる）。
 
 ### 仕様として明記すること（挙動の変化）
 - 発行済みのアクセストークン（JWT、最長15分）は失効しない。リセット後も最大15分は旧セッションで操作できる。本タスクでは許容する。
@@ -94,6 +136,13 @@
 - 3-2 の `validateUpload` は `allowedVideoMime.has(contentType)` の完全一致で判定している。`head.contentType` に `; charset` などが付く可能性に備え、`normalizeContentType` を通してから渡す。
 - S3 上のオブジェクトは、検証に失敗しても**削除しない**（サムネイル側と揃える。ログ側は削除しているが、本タスクでは合わせない）。
 
+### 保証できる範囲と残るリスク
+- 本タスクで保証するのは、**完了処理を実行した時点で、S3 上のオブジェクトのメタデータ（種類・サイズ）が条件を満たすこと**だけ。
+- 残るリスク: 署名付き PUT URL は期限内（`UPLOAD_URL_EXPIRES_IN`、既定900秒）なら何度でも使え、同じキーを上書きできる。完了処理の後に再び PUT されると、READY のまま、S3 上の実体と DB のサイズ・チェックサムが食い違う。
+  - URL を受け取れるのは、認証済みの master/editor だけ。
+  - サムネイルにも同じ経路がある（既存）。
+  - 上書き防止は §6 で別タスクにした。
+
 ### 不変条件
 - 既存の READY のコンテンツ（拡張子がファイル名由来のキー）には触れない。データの移行はしない。`signContentUrl` は既存キーのまま配信できる。
 - `CreateUploadUrlDto` の `fileName` は削除しない（web が送っているため。forbidNonWhitelisted で 400 になる）。
@@ -101,6 +150,7 @@
 ---
 
 ## 4. テスト（失敗系を厚く）
+### 4-1. 単体テスト（モック）
 既存の `apps/api/src/admin/contents/contents.service.spec.ts`（サムネイルのテスト）の書き方に倣い、Prisma と StorageService はモックする。
 
 | 対象 | ケース | 期待 |
@@ -111,25 +161,54 @@
 | completeUpload | head のサイズが上限超過 | 400。`uploadStatus=FAILED` |
 | completeUpload | 正常（`video/mp4`、上限内） | READY。`filePath` は不変 |
 | StorageService | `fileName='x.html'`、`video/mp4` | キーが `.mp4` で終わる |
-| resetPassword | 実行後 | `refreshToken.updateMany` が `{adminId, revokedAt: null}` を条件に呼ばれ、password の更新と同じ transaction に入っている |
-| AuthService/結合 | resetPassword 後に旧リフレッシュトークンで refresh | 401 |
-| login 制限 | 同じ IP から11回目 | 429・`error_code=TOO_MANY_REQUESTS`・日本語メッセージ |
-| login 制限 | refresh を連続30回 | 429 にならない（制限対象外） |
+| resetPassword | 実行後 | 同じトランザクションの中で、ロック → password 更新 → `refreshToken.updateMany({adminId, revokedAt: null})` の順に呼ばれる |
+| refresh | 条件付き失効の更新件数が0 | 401。新トークンを作らない |
+| login | 照合後に読み直した hash が異なる | 401。トークンを作らない |
 
-ローカルでの手動確認（Docker 起動）:
-- `X-Forwarded-For` を毎回変えて11回以上 login しても、**接続元が同じなら** 429 になる（ALB 1段の想定で `trust proxy=1`。直接接続のときは XFF の末尾が採用される点に注意し、結果を報告に書く）。
+### 4-2. 実 DB を使う結合テスト（同時実行）
+モックでは行ロックの効果を確認できないため、**ローカルの PostgreSQL（`docker compose up -d postgres`、5433番）に対する e2e テスト**を新規に作る。
+- ファイルは `apps/api/test/auth-reset-race.e2e-spec.ts`。既存の `test/jest-e2e.json` で実行する（e2e のテストファイルはまだ1つも無い）。
+- テスト用の管理者は、テストの中で作って後始末する。seed の管理者は使わない。
+
+| ケース | 手順 | 期待 |
+|---|---|---|
+| refresh × reset | 有効なリフレッシュトークンを用意し、`refresh` と `resetPassword` を `Promise.all` で同時に実行する。これを **50回** 繰り返す | どの回も、両方が終わった時点で `refresh_tokens` に `adminId` が一致し `revokedAt IS NULL` の行が **0件** |
+| login × reset | 旧パスワードでの `login` と `resetPassword` を同時に実行する。これを50回繰り返す | 同上（0件）。login は成功か 401 のどちらか |
+| 二重 refresh | 同じリフレッシュトークンで `refresh` を2つ同時に実行する | 成功は1つだけ。もう1つは 401 |
+| 直列の基本確認 | resetPassword の後に、旧リフレッシュトークンで refresh する | 401 |
+
+- 同時実行のテストは、修正前のコードで実行すると「0件」が崩れる回があることを1度確認し、報告に書くこと（テストが競合を検出できる証拠として）。崩れなかった場合は、繰り返し回数を増やしたことと、その結果を書く。
+
+### 4-3. ログイン制限の結合テスト（単一インスタンス）
+`supertest` で Nest アプリを1つ立ち上げ、`trust proxy=1` を設定した状態で行う。supertest は直接接続なので、`X-Forwarded-For` の値がそのままクライアント IP として扱われる。これを ALB が付ける末尾の値の代わりに使う。
+
+| ケース | 期待 |
+|---|---|
+| 同じ XFF（例 `203.0.113.10`）で login を11回 | 1〜10回目は 401、**11回目は 429**。`error_code=TOO_MANY_REQUESTS`、日本語メッセージ |
+| 10回失敗した後、別の XFF（`203.0.113.11`）で login | 401（カウンターが IP ごとに分かれている） |
+| 同じ XFF で refresh を30回 | 429 にならない（制限の対象外） |
+
+「11回目で 429」を保証するのは、**この単一インスタンスのテスト**とする。本番は複数タスクに振り分けられるので、§5 では別の基準で判定する。
 
 ## 5. 完了条件
 - §4 の全テストが成功し、既存テストの件数が減っていない。
 - `pnpm --filter @sinmirai/api build` が成功する。
-- 本番デプロイ後: 誤ったパスワードで11回 login すると 429 が返り、1分後に再び 401 に戻ることを確認する。正しいパスワードでのログインと、筐体の heartbeat に影響がないことも確認する。
+- **デプロイ前の本番構成の確認**（`trust proxy=1` が正しく働く前提条件。満たさなければデプロイしない）:
+  - ALB `sinmirai-alb` の属性 `routing.http.xff_header_processing.mode` が `append` であること（`aws elbv2 describe-load-balancer-attributes` で確認。既定値は append）。
+  - api タスクのセキュリティグループのインバウンドが、ALB のセキュリティグループからだけ許可されていること。インターネットからタスクに直接届くと、XFF の末尾を偽装されて制限を回避されるため。
+- **本番デプロイ後**:
+  - 稼働中の api タスク数 N を `describe-services` の `runningCount` で確認する。
+  - 存在しないメールアドレスで、誤ったログインを最大 **10×N+1 回**続け、その間に 429 が返ることを確認する。実在するアカウントは使わない。
+  - 何回目で 429 になったかは、タスクへの振り分け次第なので判定に使わない。記録だけする。
+  - 429 を確認したら1分待ち、401 に戻ることを確認する。
+  - 正しいパスワードでのログイン（別の接続元から）と、筐体の heartbeat に影響が無いことも確認する。
 
 ## 6. スコープ外（やらないこと）
 - `refresh`・`logout`・device API・管理 API への回数制限。
 - アカウントロック、CAPTCHA、ログイン失敗の監査ログ。
 - アクセストークン（JWT）の即時失効（パスワード変更時刻と `iat` の比較など）。
 - 無効化・ロール変更時のリフレッシュトークン失効（`isActive` の判定で遮断済み）。
-- presign URL への `ContentLength` 署名（完了時の head 検証で受け入れは防げる。ストレージの浪費対策は別タスク）。
+- presign URL への `ContentLength` 署名、上書き防止（`If-None-Match` の条件付き書き込み）。どちらも web 側の変更が必要になるため、別タスクにする。
 - ログアップロード（device）の挙動変更。既存の動画オブジェクトの移行。
 - セキュリティチェックで見つかった他の指摘: 本番の Swagger 公開、CORS が未設定時に `*` になる件、Dockerfile の `pnpm@latest`。
 
