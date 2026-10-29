@@ -215,17 +215,20 @@ export class ContentsService {
 
   async completeUpload(contentId: string, dto: CompleteUploadDto) {
     const content = await this.ensureExists(contentId);
-    if (content.filePath && content.filePath !== dto.objectKey) {
+    // 正規の流れでは createUploadUrl で必ず filePath が入っている。未設定のまま任意のキーを受け付けない
+    if (!content.filePath || content.filePath !== dto.objectKey) {
       throw new BadRequestException('アップロード対象のファイルキーが一致しません');
     }
 
     try {
       const head = await this.storageService.headObject(dto.objectKey);
+      const contentType = this.storageService.normalizeContentType(head.contentType ?? '');
+      this.storageService.validateUpload(contentType, Number(head.fileSize));
       return this.updateFileMetadata(contentId, {
         filePath: dto.objectKey,
         fileSize: head.fileSize,
         checksum: dto.checksum ?? head.checksum,
-        mimeType: head.contentType ?? content.mimeType,
+        mimeType: contentType,
         uploadStatus: ContentUploadStatus.READY,
       });
     } catch (err) {

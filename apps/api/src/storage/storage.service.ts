@@ -118,7 +118,7 @@ export class StorageService {
     this.ensureBucketConfigured();
     this.validateUpload(params.contentType, params.fileSize);
 
-    const objectKey = this.createObjectKey(params.contentId, params.fileName, params.contentType);
+    const objectKey = this.createObjectKey(params.contentId, params.contentType);
     const command = new PutObjectCommand({
       Bucket: this.bucket,
       Key: objectKey,
@@ -345,8 +345,8 @@ export class StorageService {
     }
   }
 
-  private createObjectKey(contentId: string, fileName: string, contentType: string) {
-    const ext = this.getExtension(fileName, contentType);
+  private createObjectKey(contentId: string, contentType: string) {
+    const ext = this.videoExtFromMime(contentType);
     return `contents/${contentId}/${randomUUID()}.${ext}`;
   }
 
@@ -368,10 +368,15 @@ export class StorageService {
     }
   }
 
-  private getExtension(fileName: string, contentType: string) {
-    const fileExt = fileName.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '');
-    if (fileExt) return fileExt;
-    if (contentType === 'video/quicktime') return 'mov';
-    return 'mp4';
+  // ユーザーが付けたファイル名は見ず、MIME だけで拡張子を決める
+  videoExtFromMime(contentType: string) {
+    switch (this.normalizeContentType(contentType)) {
+      case 'video/mp4':
+        return 'mp4';
+      case 'video/quicktime':
+        return 'mov';
+      default:
+        throw new BadRequestException('許可されていない動画形式です');
+    }
   }
 }

@@ -1,3 +1,7 @@
+jest.mock('@aws-sdk/s3-request-presigner', () => ({
+  getSignedUrl: jest.fn().mockResolvedValue('https://s3.example.test/upload'),
+}));
+
 import { BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { StorageService } from './storage.service';
@@ -58,5 +62,44 @@ describe('StorageService thumbnail validation', () => {
     expect(() => service.validateLogUpload('text/plain', 50 * 1024 * 1024 + 1)).toThrow(
       BadRequestException,
     );
+  });
+});
+
+describe('StorageService video upload key', () => {
+  let service: StorageService;
+
+  beforeEach(() => {
+    service = new StorageService({
+      get: jest.fn((key: string) => {
+        const values: Record<string, string> = {
+          S3_CONTENTS_BUCKET: 'test-bucket',
+          AWS_ACCESS_KEY_ID: 'test',
+        };
+        return values[key];
+      }),
+    } as unknown as ConfigService);
+  });
+
+  it('decides the extension from the MIME type only, ignoring the file name', async () => {
+    const mp4 = await service.createUploadUrl({
+      contentId: 'CNT-00001',
+      fileName: 'x.html',
+      contentType: 'video/mp4',
+      fileSize: 1024,
+    });
+    expect(mp4.objectKey).toMatch(/^contents\/CNT-00001\/[0-9a-f-]+\.mp4$/);
+
+    const mov = await service.createUploadUrl({
+      contentId: 'CNT-00001',
+      fileName: 'x.mp4',
+      contentType: 'video/quicktime',
+      fileSize: 1024,
+    });
+    expect(mov.objectKey).toMatch(/\.mov$/);
+  });
+
+  it('rejects MIME types that have no video extension', () => {
+    expect(service.videoExtFromMime('video/mp4; codecs=avc1')).toBe('mp4');
+    expect(() => service.videoExtFromMime('text/html')).toThrow(BadRequestException);
   });
 });
