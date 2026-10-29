@@ -1,12 +1,12 @@
 FROM node:22-alpine AS builder
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@11.5.0 --activate
 WORKDIR /app
 
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* tsconfig.base.json ./
 COPY apps/api/ apps/api/
 COPY packages/shared/ packages/shared/
 
-RUN pnpm install --frozen-lockfile || pnpm install
+RUN pnpm install --frozen-lockfile
 
 WORKDIR /app/apps/api
 RUN npx prisma generate
