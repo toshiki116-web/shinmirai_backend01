@@ -135,11 +135,23 @@ export class UsersService {
   async resetPassword(id: string, dto: ResetPasswordDto) {
     await this.ensureExists(id);
 
+    // ロックを持ったまま時間のかかる計算をしないよう、ハッシュはトランザクションの前に行う
     const hashedPassword = await bcrypt.hash(dto.password, 10);
-    return this.prisma.admin.update({
-      where: { id },
-      data: { password: hashedPassword },
-      select: userSelect,
+
+    // AuthService のトークン発行（login / refresh）と同じ admins 行ロックで直列化し、
+    // リセット後に旧パスワード由来のリフレッシュトークンが残らないようにする
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM admins WHERE id = ${id} FOR UPDATE`;
+      const updated = await tx.admin.update({
+        where: { id },
+        data: { password: hashedPassword },
+        select: userSelect,
+      });
+      await tx.refreshToken.updateMany({
+        where: { adminId: id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      return updated;
     });
   }
 

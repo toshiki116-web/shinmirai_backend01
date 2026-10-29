@@ -1,5 +1,6 @@
 import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { Prisma } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { createHash, randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -29,8 +30,16 @@ export class AuthService {
       throw new UnauthorizedException('メールアドレスまたはパスワードが正しくありません');
     }
 
+    // bcrypt照合中にパスワードリセットが完了していた場合にトークンを発行しないよう、admins行のロック下で読み直す
+    const refreshToken = await this.prisma.$transaction(async (tx) => {
+      await this.lockAdmin(tx, admin.id);
+      const current = await tx.admin.findUnique({ where: { id: admin.id } });
+      if (!current || !current.isActive || current.password !== admin.password) {
+        throw new UnauthorizedException('メールアドレスまたはパスワードが正しくありません');
+      }
+      return this.createRefreshToken(tx, admin.id);
+    });
     const accessToken = this.signAccessToken(admin);
-    const refreshToken = await this.createRefreshToken(admin.id);
 
     this.logger.log(`管理ユーザーログイン成功: ${admin.email}`);
 
@@ -49,39 +58,47 @@ export class AuthService {
 
   async refresh(refreshToken: string) {
     const tokenHash = this.hashRefreshToken(refreshToken);
+    // adminId を得るだけの読み取り。有効性はロック取得後に条件付き更新で判定し直す
     const storedToken = await this.prisma.refreshToken.findUnique({
       where: { tokenHash },
-      include: { admin: true },
     });
 
-    const now = new Date();
-    if (!storedToken || storedToken.revokedAt || storedToken.expiresAt <= now) {
+    if (!storedToken) {
       throw new UnauthorizedException('リフレッシュトークンが無効です');
     }
 
-    if (!storedToken.admin.isActive) {
-      throw new UnauthorizedException('管理ユーザーが無効です');
-    }
-
     const newRefreshToken = this.generateRefreshToken();
-    const newRefreshTokenHash = this.hashRefreshToken(newRefreshToken);
+    const now = new Date();
 
-    await this.prisma.$transaction([
-      this.prisma.refreshToken.update({
-        where: { id: storedToken.id },
+    const admin = await this.prisma.$transaction(async (tx) => {
+      await this.lockAdmin(tx, storedToken.adminId);
+
+      // リセットで失効済み、または同じトークンの二重使用なら更新件数が0になる
+      const revoked = await tx.refreshToken.updateMany({
+        where: { id: storedToken.id, revokedAt: null, expiresAt: { gt: now } },
         data: { revokedAt: now },
-      }),
-      this.prisma.refreshToken.create({
+      });
+      if (revoked.count !== 1) {
+        throw new UnauthorizedException('リフレッシュトークンが無効です');
+      }
+
+      const current = await tx.admin.findUnique({ where: { id: storedToken.adminId } });
+      if (!current || !current.isActive) {
+        throw new UnauthorizedException('管理ユーザーが無効です');
+      }
+
+      await tx.refreshToken.create({
         data: {
           adminId: storedToken.adminId,
-          tokenHash: newRefreshTokenHash,
+          tokenHash: this.hashRefreshToken(newRefreshToken),
           expiresAt: this.getRefreshTokenExpiresAt(),
         },
-      }),
-    ]);
+      });
+      return current;
+    });
 
     return {
-      access_token: this.signAccessToken(storedToken.admin),
+      access_token: this.signAccessToken(admin),
       refresh_token: newRefreshToken,
     };
   }
@@ -106,9 +123,14 @@ export class AuthService {
     });
   }
 
-  private async createRefreshToken(adminId: string) {
+  // 同じ管理者のトークン発行とパスワードリセットを直列化する（呼び出し元のトランザクション内で使う）
+  private async lockAdmin(tx: Prisma.TransactionClient, adminId: string) {
+    await tx.$queryRaw`SELECT id FROM admins WHERE id = ${adminId} FOR UPDATE`;
+  }
+
+  private async createRefreshToken(tx: Prisma.TransactionClient, adminId: string) {
     const refreshToken = this.generateRefreshToken();
-    await this.prisma.refreshToken.create({
+    await tx.refreshToken.create({
       data: {
         adminId,
         tokenHash: this.hashRefreshToken(refreshToken),
