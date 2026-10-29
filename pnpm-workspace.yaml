@@ -11,3 +11,18 @@ allowBuilds:
   prisma: true
   sharp: true
   unrs-resolver: true
+overrides:
+  # proxy-addr: IPv4-mapped IPv6 trust subnet による IP 偽装（critical, 修正 >=2.0.8）
+  proxy-addr: ^2.0.8
+  # body-parser: 圧縮リクエスト後続バイトによる DoS（high, 修正 >=2.4.0）
+  body-parser: ^2.4.0
+  # multer: 保留中の非同期 fileFilter による DoS（high, 修正 >=2.5.0）
+  multer: ^2.5.0
+  # postcss: sourceMappingURL 経由の任意ファイル読取/パストラバーサル（high, 修正 >=8.5.18）
+  postcss: ^8.5.18
+  # nanoid: 不正サイズ指定で無限ループ（high, 修正 >=3.3.18）
+  nanoid: ^3.3.18
+  # browserslist: キャッシュ無制限増加・stats 注入によるクラッシュ（high, 修正 >=4.28.7）
+  browserslist: ^4.28.7
+  # source-map-js: インデックス付き source map による DoS（high, 修正 >=1.2.2）
+  source-map-js: ^1.2.2
