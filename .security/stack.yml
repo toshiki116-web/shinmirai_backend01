@@ -1,0 +1,4 @@
+# 本番の版（2026-10-26 に ECS で稼働中のイメージの NODE_VERSION から確認。api / web とも同じ）
+runtimes:
+  node: "22.23.4"
+os: linux
