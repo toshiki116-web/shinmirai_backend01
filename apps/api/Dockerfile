@@ -1,4 +1,4 @@
-FROM node:22-alpine AS builder
+FROM node:22.23.4-alpine AS builder
 RUN corepack enable && corepack prepare pnpm@11.5.0 --activate
 WORKDIR /app
 
@@ -14,7 +14,7 @@ RUN npx prisma generate
 RUN pnpm --filter @sinmirai/shared build
 RUN pnpm build
 
-FROM node:22-alpine AS runner
+FROM node:22.23.4-alpine AS runner
 WORKDIR /app
 
 COPY --from=builder /app ./
